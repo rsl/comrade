@@ -21,12 +21,29 @@ AllCops:
     - rake
     - jruby
     - rbx
-  # NOTE: Do not add Include/Exclude patterns here. This config is inherited
-  # via URL, and RuboCop resolves inherited patterns relative to the rubocop
-  # cache dir (~/.cache/rubocop_cache), so they match nothing in the project.
-  # All Include/Exclude patterns belong in each project's own .rubocop.yml —
-  # see example_rubocop.yml for the canonical starting point.
+  # This file is vendored from Fractured Atlas's shared base config and is
+  # this project's own .rubocop.yml — so project Include/Exclude patterns live
+  # here directly. (In the shared setup this config is inherited via URL and
+  # RuboCop resolves inherited patterns relative to the rubocop cache dir,
+  # where they match nothing; the vendored copy has no such problem.)
   # Default formatter will be used if no `-f/--format` option is given.
+  Include:
+    - '**/*.rb'
+    - '**/*.rake'
+    - '**/*.gemspec'
+    - '**/Rakefile'
+    - '**/Gemfile'
+    - '**/*.ru'
+    - '**/*.jbuilder'
+  Exclude:
+    - bin/**/*
+    - config/**/*
+    - db/**/*
+    - lib/tasks/**/*
+    - node_modules/**/*
+    - script/**/*
+    - spec/**/*
+    - vendor/**/*
   DefaultFormatter: progress
   # Cop names are displayed in offense messages by default. Change behavior
   # by overriding DisplayCopNames, or by giving the `--no-display-cop-names`
@@ -69,7 +86,10 @@ AllCops:
   # the `--enable-pending-cops` command-line option.
   # When `NewCops` is `disable`, pending cops are disabled in bulk. Can be overridden by
   # the `--disable-pending-cops` command-line option.
-  NewCops: enable
+  # Pending cops stay disabled: the vendored cop set is pinned to the
+  # rubocop version in the header comment. New cops are adopted deliberately
+  # when the config is regenerated, not silently on gem bumps.
+  NewCops: disable
   # Enables the result cache if `true`. Can be overridden by the `--cache` command
   # line option.
   UseCache: true
@@ -6102,29 +6122,6 @@ require:
 
 Layout/MultilineMethodArgumentLineBreaksExceptLambdas:
   Enabled: true
-
-AllCops:
-  # Only use x.y format. Do not include patch version.
-  TargetRubyVersion: 4.0
-  TargetRailsVersion: 8.1
-  Include:
-    - '**/*.rb'
-    - '**/*.rake'
-    - '**/*.gemspec'
-    - '**/Rakefile'
-    - '**/Gemfile'
-    - '**/*.ru'
-    - '**/*.jbuilder'
-  Exclude:
-    - bin/**/*
-    - config/**/*
-    - db/**/*
-    - lib/tasks/**/*
-    - node_modules/**/*
-    - script/**/*
-    - spec/**/*
-    - vendor/**/*
-  SuggestExtensions: false
 
 Rails/LexicallyScopedActionFilter:
   Exclude:
