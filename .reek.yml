@@ -1,0 +1,169 @@
+exclude_paths:
+  - config/
+  - db/
+  - tmp/
+  - vendor/
+  - node_modules/
+  - .git/
+
+detectors:
+  # Updated Enabled to false
+  Attribute:
+    enabled: false
+    exclude: []
+  BooleanParameter:
+    enabled: true
+    exclude: []
+  ClassVariable:
+    enabled: true
+    exclude: []
+  ControlParameter:
+    enabled: true
+    exclude: []
+  # Updated max_copies to 3
+  DataClump:
+    enabled: true
+    exclude: []
+    max_copies: 3
+    min_clump_size: 2
+  # Updated max_calls to 3
+  DuplicateMethodCall:
+    enabled: true
+    exclude: []
+    max_calls: 3
+    allow_calls: []
+  # Updated Enabled to false
+  FeatureEnvy:
+    enabled: false
+    exclude: []
+  InstanceVariableAssumption:
+    enabled: true
+    exclude: []
+  # Updated Enabled to false
+  IrresponsibleModule:
+    enabled: false
+    exclude: []
+  # Updated max_params to 5
+  LongParameterList:
+    enabled: true
+    exclude: []
+    max_params: 5
+    overrides:
+      initialize:
+        max_params: 5
+  # Updated max_params to 5
+  LongYieldList:
+    enabled: true
+    exclude: []
+    max_params: 5
+  ManualDispatch:
+    enabled: true
+    exclude: []
+  MissingSafeMethod:
+    enabled: true
+    exclude: []
+  ModuleInitialize:
+    enabled: true
+    exclude: []
+  # Updated max_allowed_nesting to 2
+  NestedIterators:
+    enabled: true
+    exclude: []
+    max_allowed_nesting: 2
+    ignore_iterators:
+    - tap
+    - Tempfile.create
+  NilCheck:
+    enabled: true
+    exclude: []
+  RepeatedConditional:
+    enabled: true
+    exclude: []
+    max_ifs: 2
+  SubclassedFromCoreClass:
+    enabled: true
+    exclude: []
+  # Updated Enabled to false
+  TooManyConstants:
+    enabled: false
+    exclude: []
+    max_constants: 5
+  # Updated Enabled to false
+  TooManyInstanceVariables:
+    enabled: false
+    exclude: []
+    max_instance_variables: 4
+  # Updated max_methods to 30
+  TooManyMethods:
+    enabled: true
+    exclude: []
+    max_methods: 30
+  # Updated max_statements to 6
+  TooManyStatements:
+    enabled: true
+    exclude:
+    - initialize
+    max_statements: 6
+  # Updated accept to s3
+  UncommunicativeMethodName:
+    enabled: true
+    exclude: []
+    reject:
+    - "/^[a-z]$/"
+    - "/[0-9]$/"
+    - "/[A-Z]/"
+    accept:
+    - s3
+  UncommunicativeModuleName:
+    enabled: true
+    exclude: []
+    reject:
+    - "/^.$/"
+    - "/[0-9]$/"
+    accept: []
+  UncommunicativeParameterName:
+    enabled: true
+    exclude: []
+    reject:
+    - "/^.$/"
+    - "/[0-9]$/"
+    - "/[A-Z]/"
+    - "/^_/"
+    accept: []
+  UncommunicativeVariableName:
+    enabled: true
+    exclude: []
+    reject:
+    - "/^.$/"
+    - "/[0-9]$/"
+    - "/[A-Z]/"
+    accept:
+    - "/^_$/"
+  UnusedParameters:
+    enabled: true
+    exclude: []
+  UnusedPrivateMethod:
+    enabled: false
+    exclude: []
+  # Updated public_methods_only to true
+  # Updated exclude to perform
+  UtilityFunction:
+    enabled: true
+    exclude:
+    - perform
+    public_methods_only: true
+
+# Taken from https://github.com/troessner/reek/blob/master/README.md#working-with-rails
+directories:
+  "app/controllers":
+    InstanceVariableAssumption:
+      enabled: false
+  "app/helpers":
+    UtilityFunction:
+      enabled: false
+  "app/mailers":
+    InstanceVariableAssumption:
+      enabled: false
+  "app/models":
+    InstanceVariableAssumption:
+      enabled: false
