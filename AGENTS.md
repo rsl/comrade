@@ -107,7 +107,8 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
   unit each.
 - **`main` changes only through pull requests** (branch rules enforce it —
   direct pushes are rejected). Branch from up-to-date `main` with the
-  `rsl-` prefix, open the PR, merge after rsl has seen it.
+  `rsl-` prefix; batch a working session's commits onto one branch and one
+  PR — granular commits, few pushes — and merge after rsl has seen it.
 - **Before the first edit of a task, state the plan** — files, order, what
   changes — and wait for a go-ahead.
 - **Read before edit.** The edit tool matches byte-for-byte; read the
