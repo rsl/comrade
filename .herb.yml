@@ -1,0 +1,347 @@
+# This file configures Herb for your project and team.
+# Settings here take precedence over individual editor preferences.
+#
+# Herb is a suite of tools for HTML+ERB templates including:
+# - Linter: Validates templates and enforces best practices
+# - Formatter: Auto-formats templates with intelligent indentation
+# - Language Server: Provides IDE support (VS Code, Zed, Neovim, etc.)
+#
+# Website: https://herb-tools.dev
+# Configuration: https://herb-tools.dev/configuration
+# GitHub Repo: https://github.com/marcoroth/herb
+#
+
+version: 0.11.1
+
+# # Framework and template engine configuration
+#
+# # Options: ruby | actionview | hanami | sinatra (default: ruby)
+# Updated framework to actionview
+framework: actionview
+#
+# # Options: erubi | erb | herb (default: erubi)
+# template_engine: erubi
+
+# files:
+#   # Additional patterns beyond the defaults (**.html, **.rhtml, **.html.erb, etc.)
+#   include:
+#     - '**/*.xml.erb'
+#     - 'custom/**/*.html'
+#
+#   # Patterns to exclude (can exclude defaults too)
+#   exclude:
+#     - 'public/**/*'
+#     - 'tmp/**/*'
+
+# engine:
+#   validators:
+#     security: true       # default: true
+#     nesting: true        # default: true
+#     accessibility: true  # default: true
+
+linter:
+  enabled: true
+
+  # # Exit with error code when diagnostics of this severity or higher are present
+  # # Valid values: error (default), warning, info, hint
+  # failLevel: warning
+
+  # # Only report diagnostics of this severity or higher
+  # # Affects the CLI output only: lower-severity offenses are still counted in the
+  # # summary and still show up in your editor, they just aren't printed or
+  # # annotated in CI. Valid values: error, warning, info, hint (default)
+  # logLevel: warning
+
+  # # Additional patterns beyond the defaults for linting
+  # include:
+  #   - '**/*.xml.erb'
+  #
+  # # Patterns to exclude from linting
+  # exclude:
+  #   - 'app/views/admin/**/*'
+
+  rules:
+    # Updated severity to error
+    actionview-no-helper-shadowing:
+      severity: error
+
+    # Updated severity to error
+    actionview-no-implicit-polymorphic-url:
+      severity: error
+
+    # Updated severity to error
+    actionview-no-mistyped-locals:
+      severity: error
+
+    # Updated severity to error
+    actionview-no-render-option-shadowing:
+      severity: error
+
+    # Updated severity to error
+    actionview-no-unnecessary-tag-attributes:
+      severity: error
+
+    # Updated severity to error
+    actionview-prefer-form-with:
+      severity: error
+
+    # Updated severity to error
+    actionview-prefer-link-to-helper:
+      severity: error
+
+    # Updated severity to error
+    actionview-prefer-pluralize-helper:
+      severity: error
+
+    # Updated severity to error
+    actionview-prefer-qualified-partial-path:
+      severity: error
+
+    actionview-strict-locals-first-line:
+      severity: error
+
+    # Updated severity to error
+    actionview-strict-locals-partial-only:
+      severity: error
+
+    # Updated severity to error
+    erb-no-commented-out-output-tags:
+      severity: error
+
+    # Updated severity to error
+    erb-no-duplicate-branch-elements:
+      severity: error
+
+    # Updated severity to error
+    erb-no-inline-case-conditions:
+      severity: error
+
+    # Updated severity to error
+    erb-no-interpolated-class-names:
+      severity: error
+
+    # Updated severity to error
+    erb-no-javascript-tag-helper:
+      severity: error
+
+    # Updated severity to error
+    erb-no-multiple-statements:
+      severity: error
+
+    # Updated severity to error
+    erb-no-silent-statement:
+      severity: error
+
+    # Updated severity to error
+    erb-no-then-in-control-flow:
+      severity: error
+
+    erb-prefer-explicit-conditionals:
+      severity: error
+
+    # Updated severity to error
+    erb-prefer-image-tag-helper:
+      severity: error
+
+    # Updated severity to error
+    herb-disable-comment-no-duplicate-rules:
+      severity: error
+
+    # Updated severity to error
+    herb-disable-comment-no-redundant-all:
+      severity: error
+
+    # Updated severity to error
+    herb-disable-comment-out-of-date:
+      severity: error
+
+    # Updated severity to error
+    herb-disable-comment-unnecessary:
+      severity: error
+
+    # Updated severity to error
+    herb-disable-comment-valid-rule-name:
+      severity: error
+
+    # Make sure all html-aria- rules are enabled
+    # Updated severity to error
+    html-aria-attribute-must-be-valid:
+      severity: error
+
+    # Updated severity to error
+    html-aria-label-is-well-formatted:
+      severity: error
+
+    # Updated severity to error
+    html-aria-level-must-be-valid:
+      severity: error
+
+    # Updated severity to error
+    html-aria-role-heading-requires-level:
+      severity: error
+
+    # Updated severity to error
+    html-aria-role-must-be-valid:
+      severity: error
+
+    # Updated severity to error
+    html-attribute-double-quotes:
+      severity: error
+
+    # Updated severity to error
+    html-attribute-name-valid-characters:
+      severity: error
+
+    # Updated severity to error
+    html-avoid-both-disabled-and-aria-disabled:
+      severity: error
+
+    # Updated severity to error
+    html-details-has-summary:
+      severity: error
+
+    # Updated severity to error
+    html-iframe-has-title:
+      severity: error
+
+    # Updated severity to error
+    html-img-require-alt:
+      severity: error
+
+    # Updated severity to error
+    html-input-require-autocomplete:
+      severity: error
+
+    # Updated severity to error
+    html-navigation-has-label:
+      severity: error
+
+    # Updated severity to error
+    html-no-abstract-roles:
+      severity: error
+
+    # Updated severity to error
+    html-no-aria-hidden-on-body:
+      severity: error
+
+    # Updated severity to error
+    html-no-aria-hidden-on-focusable:
+      severity: error
+
+    html-no-block-inside-inline:
+      severity: error
+
+    # Updated severity to error
+    html-no-empty-attributes:
+      severity: error
+
+    # Updated severity to error
+    html-no-empty-headings:
+      severity: error
+
+    html-no-event-handler-attributes:
+      severity: error
+
+    html-no-inline-script-elements:
+      severity: error
+
+    # Updated severity to error
+    html-no-obsolete-tags:
+      severity: error
+
+    # Updated severity to error
+    html-no-positive-tab-index:
+      severity: error
+
+    html-no-style-attributes:
+      severity: error
+      exclude:
+        - 'app/views/**/*_mailer/**'
+
+    html-no-style-elements:
+      severity: error
+      # Static error pages (public/*.html) must be self-contained — they render
+      # when the app is broken, so external CSS can't be relied on.
+      exclude:
+        - 'public/**/*'
+
+    # Updated severity to error
+    html-no-title-attribute:
+      severity: error
+
+    # Updated severity to error
+    html-no-underscores-in-attribute-names:
+      severity: error
+
+    # Updated severity to error
+    html-no-unescaped-entities:
+      severity: error
+
+    # Updated severity to error
+    html-no-unknown-tag:
+      severity: error
+
+    # All UJS rules should be errors, prefer Turbo
+    # Updated severity to error
+    ujs-no-remote-attribute:
+      severity: error
+
+    # Updated severity to error
+    ujs-prefer-turbo-confirm:
+      severity: error
+
+    # Updated severity to error
+    ujs-prefer-turbo-method:
+      severity: error
+
+    # Updated severity to error
+    ujs-prefer-turbo-submits-with:
+      severity: error
+
+  #   # The 'all' pseudo rule sets the default for every rule you don't list.
+  #   #   false: start from an empty set and opt back in explicitly
+  #   #   true:  start from every rule, including the ones off by default
+  #   all:
+  #     enabled: false
+  #
+  #   erb-no-extra-newline:
+  #     enabled: false
+  #
+  #   # Rules can have 'include', 'only', and 'exclude' patterns
+  #   some-rule:
+  #     # Additional patterns to check (additive, ignored when 'only' is present)
+  #     include:
+  #       - 'app/components/**/*'
+  #     # Don't apply this rule to files matching these patterns
+  #     exclude:
+  #       - 'app/views/admin/**/*'
+  #
+  #   another-rule:
+  #     # Only apply this rule to files matching these patterns (overrides all 'include')
+  #     only:
+  #       - 'app/views/**/*'
+  #     # Exclude still applies even with 'only'
+  #     exclude:
+  #       - 'app/views/admin/**/*'
+
+formatter:
+  enabled: false
+  indentWidth: 2
+  indentStyle: space
+  maxLineLength: 120
+
+  # # Additional patterns beyond the defaults for formatting
+  # include:
+  #   - '**/*.xml.erb'
+  #
+  # # Patterns to exclude from formatting
+  # exclude:
+  #   - 'app/views/admin/**/*'
+
+  # # Rewriters modify templates during formatting
+  # rewriter:
+  #   # Pre-format rewriters (modify AST before formatting)
+  #   pre:
+  #     - tailwind-class-sorter
+  #   # Post-format rewriters (modify formatted output string)
+  #   post: []
