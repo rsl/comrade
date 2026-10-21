@@ -11,12 +11,18 @@ Lifecycle:
    any open item moves to the repo's single open-items registry (currently
    the README TODOs / GitHub issues once they exist). A doc sitting in here
    with unresolved items in it is a bug.
-3. **Consumed means archived — by the reader, not the writer.** A session
-   never archives its own handoff: the handoff sits here uncommitted as
-   the session boundary, and the NEXT session's opening act is read it →
-   commit it (citing the work's shas) → verify its open items live in the
-   registry → `git mv` it to `.agent-notes/archive/`. History lives in
-   git; the archive keeps it greppable.
+3. **Archived when superseded, not when read.** A handoff is half
+   record, half plan — reading it doesn't consume it. The next
+   session's opening act is only: read it, verify its open items live
+   in the registry. Nothing moves, nothing commits. The archive move
+   belongs to close-out: when the session that consumed it writes its
+   own handoff, it writes the new one FIRST, then moves the old one to
+   `.agent-notes/archive/`, annotates anything the session proved
+   wrong, and commits it there citing the work's shas. A session never
+   archives its own handoff, and never archives its predecessor before
+   the new handoff exists — a crash in between leaves the old handoff
+   here as the live plan, which is correct. History lives in git; the
+   archive keeps it greppable.
 
-The correct steady state at a session boundary: exactly one doc here —
-the current handoff, uncommitted.
+The correct steady state: exactly one doc here — the live handoff. It
+leaves only when its successor is written.
