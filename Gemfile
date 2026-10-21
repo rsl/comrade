@@ -52,7 +52,7 @@ group :development, :test do
   # Static analysis for security vulnerabilities [https://brakemanscanner.org/]
   gem 'brakeman', require: false
 
-  # RuboCop with the Fractured Atlas shared ruleset
+  # RuboCop, configured by the vendored .rubocop.yml
   gem 'rubocop', require: false
   gem 'rubocop-performance', require: false
   gem 'rubocop-rails', require: false
