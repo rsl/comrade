@@ -36,3 +36,6 @@
 
 # Ignore .env files
 .env
+
+# Agent design contract — private by decision; public content lives in docs/
+.agent-notes/roadmap.md
