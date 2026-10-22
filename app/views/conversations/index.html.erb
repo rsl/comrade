@@ -1,0 +1,10 @@
+<header class="mx-auto max-w-2xl px-5 pt-16">
+  <h1 class="text-3xl font-semibold tracking-tight text-neutral-100">
+    <%= link_to 'Comrade', root_path %>
+  </h1>
+  <p class="mt-1 text-sm text-neutral-500">Seize the means of information retrieval.</p>
+</header>
+
+<%= chat_surface(endpoint: conversations_path, fresh: true) %>
+
+<%= recent_conversations(@conversations) %>

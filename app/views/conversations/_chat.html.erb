@@ -1,0 +1,36 @@
+<div
+  data-controller="stream-reader"
+  data-stream-reader-endpoint-value="<%= endpoint %>"
+  data-stream-reader-fresh-value="<%= fresh %>"
+>
+  <div
+    id="transcript"
+    data-stream-reader-target="transcript"
+    class="mx-auto flex max-w-2xl flex-col gap-6 px-5 py-10"
+  >
+    <% messages.each do |message| %>
+      <%= message_turn(message) %>
+    <% end %>
+  </div>
+
+  <div class="sticky bottom-0 bg-neutral-950/90 pb-6 pt-2 backdrop-blur">
+    <form
+      data-turbo="false"
+      data-stream-reader-target="form"
+      data-action="submit->stream-reader#submit"
+      class="mx-auto flex max-w-2xl items-end gap-3 px-5"
+    >
+      <textarea
+        name="content"
+        rows="1"
+        required
+        placeholder="Ask away"
+        class="grow resize-none rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 leading-snug focus:border-neutral-500 focus:outline-none"
+      ></textarea>
+      <button
+        type="submit"
+        class="rounded-lg bg-red-700 px-4 py-3 font-medium text-white hover:bg-red-600"
+      >Ask</button>
+    </form>
+  </div>
+</div>

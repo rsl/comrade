@@ -5,11 +5,11 @@ class Conversation < ApplicationRecord
   has_many :messages, -> { order(:id) }, dependent: :destroy
 
   # Birth path for a conversation: the title is derived from the first
-  # message at creation. Nothing backfills it later.
+  # message at creation. The user message itself is persisted by
+  # Comrade::Reply (its eager append is the 422 gate) — start! must not
+  # double-write it. Nothing backfills the title later.
   def self.start!(content:)
-    create!(title: content.strip.gsub(/\s+/, ' ').slice(0, 50)).tap do |conversation|
-      conversation.messages.create!(role: 'user', content: content)
-    end
+    create!(title: content.strip.gsub(/\s+/, ' ').slice(0, 50))
   end
 
   # The transcript is what Comrade::Reply sends to the API: messages in

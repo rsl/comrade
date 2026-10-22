@@ -7,7 +7,9 @@ Rails.application.routes.draw do
 
   # show lands with 3a's conversation page; the route exists because the
   # resource's address (Location header) is already part of the 2a contract.
-  resources :conversations, only: %i[create show] do
+  root 'conversations#index'
+
+  resources :conversations, only: %i[index create show] do
     resources :messages, only: [:create]
   end
 

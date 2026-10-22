@@ -1,0 +1,6 @@
+<article class="<%= message.role == 'user' ? 'text-neutral-100' : 'text-neutral-300' %>">
+  <p class="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
+    <%= message.role == 'user' ? 'You' : 'Comrade' %>
+  </p>
+  <div class="whitespace-pre-wrap leading-relaxed"><%= message.content %></div>
+</article>
