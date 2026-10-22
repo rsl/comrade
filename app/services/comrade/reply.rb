@@ -82,8 +82,14 @@ module Comrade
 
         citations += run_tool_round(frame, yielder)
       end
-      # The model kept calling tools past the cap — answer with what exists.
-      append_message(role: 'assistant', content: 'I hit the tool-use limit before I could finish.')
+      final_answer(citations, yielder)
+    end
+
+    # Cap reached: one last pass with no tools on offer — the model must
+    # answer from what the rounds gathered instead of dead-ending.
+    def final_answer(citations, yielder)
+      frame = stream_pass(yielder, tool_definitions: [])
+      persist_answer(frame[:content], citations, yielder)
     end
 
     def run_tool_round(frame, yielder)
@@ -105,10 +111,12 @@ module Comrade
     # One streaming request/response pass. Text deltas flow out as events;
     # tool_call fragments accumulate until the stream ends, so the whole
     # frame lands complete. Returns { content:, tool_calls: } (indexed).
-    def stream_pass(yielder)
+    def stream_pass(yielder, tool_definitions: DEFINITIONS)
       content = +''
       tool_calls = Hash.new { |hash, index| hash[index] = { id: nil, name: +'', arguments: +'' } }
-      each_frame { |delta| absorb_delta(delta, content, tool_calls, yielder) }
+      each_frame(payload(tool_definitions: tool_definitions)) do |delta|
+        absorb_delta(delta, content, tool_calls, yielder)
+      end
       { content: content, tool_calls: tool_calls }
     end
 
@@ -185,9 +193,9 @@ module Comrade
     # boundaries, so complete lines are buffered out here. The parser
     # yields full delta objects — content and tool_call fragments both —
     # and drops role-only frames and [DONE].
-    def each_frame
+    def each_frame(request_body)
       buffer = +''
-      stream_chunks do |chunk|
+      stream_chunks(request_body) do |chunk|
         buffer << chunk
         while (line = buffer.slice(/\A[^\n]*\n/))
           buffer.slice!(0, line.length)
@@ -204,9 +212,9 @@ module Comrade
       JSON.parse(payload).dig('choices', 0, 'delta')
     end
 
-    def stream_chunks(&block)
+    def stream_chunks(request_body, &block)
       http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https')
-      http.request(post_request) do |response|
+      http.request(post_request(request_body)) do |response|
         ensure_success(response)
         response.read_body(&block)
       end
@@ -216,9 +224,9 @@ module Comrade
       http&.finish
     end
 
-    def post_request
+    def post_request(request_body)
       request = Net::HTTP::Post.new(uri.request_uri, headers)
-      request.body = payload.to_json
+      request.body = request_body.to_json
       request
     end
 
@@ -246,11 +254,11 @@ module Comrade
       # rubocop:enable Style/StringHashKeys
     end
 
-    def payload
+    def payload(tool_definitions: DEFINITIONS)
       {
         model: ENV.fetch('COMRADE_LLM_MODEL'),
         messages: [role: 'system', content: prompt] + @conversation.to_transcript,
-        tools: DEFINITIONS,
+        tools: tool_definitions,
         stream: true,
       }
     end
