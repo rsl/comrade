@@ -3,8 +3,8 @@
 # `rails server`, with the COMRADE_PORT/PORT mapping below.
 #
 # Background daemon: bin/dev start|stop|restart|status|logs — detached
-# processes (web + GoodJob worker) logging to log/dev-server.log with pids
-# in tmp/pids/devd.pid and tmp/pids/jobsd.pid.
+# processes (web + GoodJob worker + Tailwind watcher) logging to
+# log/dev-server.log with pids in tmp/pids/{devd,jobsd,tailwind}.pid.
 
 require 'socket'
 
@@ -25,8 +25,10 @@ def start_port
 end
 PIDFILE = 'tmp/pids/devd.pid'
 JOBS_PIDFILE = 'tmp/pids/jobsd.pid'
+TAILWIND_PIDFILE = 'tmp/pids/tailwind.pid'
 PORTFILE = 'tmp/pids/devd.port'
 LOGFILE = 'log/dev-server.log'
+PROCESSES = { web: PIDFILE, jobs: JOBS_PIDFILE, tailwind: TAILWIND_PIDFILE }.freeze
 
 def pid(pidfile = PIDFILE)
   File.read(pidfile).to_i
@@ -66,14 +68,25 @@ def start_server
   abort "already running (pid #{ pid })" if running?
 
   File.write(PORTFILE, start_port)
-  jobs = Process.spawn('./bin/jobs', out: [LOGFILE, 'a'], err: [:child, :out], pgroup: true)
+  # The watcher reads stdin (langafile's pattern) — feed it an endless
+  # tail so it survives its parent shell. The binary platform gem is
+  # skipped when the global BUNDLE_FORCE_RUBY_PLATFORM export is set,
+  # so force it off here.
+  tailwind = Process.spawn(
+    { 'BUNDLE_FORCE_RUBY_PLATFORM' => 'false' },
+    'sh', '-c', 'tail -f /dev/null | ./bin/rails tailwindcss:watch',
+    out: [LOGFILE, 'a'], err: %i[child out], pgroup: true
+  )
+  File.write(TAILWIND_PIDFILE, tailwind)
+  jobs = Process.spawn('./bin/jobs', out: [LOGFILE, 'a'], err: %i[child out], pgroup: true)
   File.write(JOBS_PIDFILE, jobs)
-  spawned = Process.spawn({ 'PORT' => start_port }, './bin/dev', out: [LOGFILE, 'a'], err: [:child, :out], pgroup: true)
+  spawned = Process.spawn({ 'PORT' => start_port }, './bin/dev', out: [LOGFILE, 'a'], err: %i[child out], pgroup: true)
   File.write(PIDFILE, spawned)
+  Process.detach(tailwind)
   Process.detach(jobs)
   Process.detach(spawned)
   if wait_for_port(15)
-    puts "comrade dev server on port #{ start_port } (pid #{ spawned }, jobs pid #{ jobs }, log #{ LOGFILE })"
+    puts "comrade dev server on port #{ start_port } (pid #{ spawned }, jobs pid #{ jobs }, tailwind pid #{ tailwind }, log #{ LOGFILE })"
   else
     puts "server did not come up on port #{ start_port } — last log lines:"
     system('tail', '-n', '20', LOGFILE)
@@ -97,11 +110,10 @@ def stop_process(pidfile)
 end
 
 def stop_server
-  abort 'not running' if !running?(PIDFILE) && !running?(JOBS_PIDFILE)
+  abort 'not running' if PROCESSES.values.none? { |file| running?(file) }
 
-  jobs_pid = stop_process(JOBS_PIDFILE)
-  web_pid = stop_process(PIDFILE)
-  puts "stopped (web pid #{ web_pid }, jobs pid #{ jobs_pid })"
+  stopped = PROCESSES.keys.reverse.map { |name| [name, stop_process(PROCESSES[name])] }.to_h
+  puts "stopped (#{ stopped.map { |name, process_pid| "#{ name } pid #{ process_pid }" }.join(', ') })"
 end
 
 case ARGV.first
@@ -110,13 +122,15 @@ when 'start'
 when 'stop'
   stop_server
 when 'restart'
-  stop_server if running?(PIDFILE) || running?(JOBS_PIDFILE)
+  stop_server if PROCESSES.values.any? { |file| running?(file) }
   start_server
 when 'status'
   if running?(PIDFILE)
     state = port_open? ? 'answering' : 'booting'
-    jobs_state = running?(JOBS_PIDFILE) ? "jobs pid #{ pid(JOBS_PIDFILE) }" : 'jobs stopped'
-    puts "running (pid #{ pid }, port #{ dev_port }, #{ state }, #{ jobs_state })"
+    states = PROCESSES.reject { |name, _| name == :web }.map do |name, file|
+      running?(file) ? "#{ name } pid #{ pid(file) }" : "#{ name } stopped"
+    end
+    puts "running (pid #{ pid }, port #{ dev_port }, #{ state }, #{ states.join(', ') })"
   else
     puts 'stopped'
   end
@@ -126,6 +140,8 @@ when 'logs'
   exec 'tail', '-n', '50', '-f', LOGFILE
 else
   # Foreground passthrough — flags and bare invocation go to rails server.
+  # Bound wide in dev so fleet devices (iPad) reach it via Bonjour; the
+  # app is authless, so production binding stays puma.rb/Kamal business.
   ENV['PORT'] = ENV['COMRADE_PORT'] if ENV['COMRADE_PORT']
-  exec './bin/rails', 'server', *ARGV
+  exec './bin/rails', 'server', '--binding', '0.0.0.0', *ARGV
 end

@@ -22,10 +22,13 @@ citations. AGPL-3.0. Personal tool, built public-first.
   exported in `~/.oh-my-zsh/custom/exports.zsh`). Precedence: `-p` flag >
   `COMRADE_PORT` > ambient `PORT` > Rails' 3000. The mapping lives only in
   `bin/dev`, so production's Kamal-set `PORT` is untouchable by it.
+  Dev binds 0.0.0.0 so fleet devices reach it; `comrade.local` is
+  advertised over Bonjour via launchd (`com.rsl.comrade-mdns`) and
+  resolves locally via `/etc/hosts`.
 - Dev host: `COMRADE_HOST` (comrade.local here) is safelisted in
-  `config/environments/development.rb` and resolves via `/etc/hosts` —
-  named hosts isolate cookies between the fleet's apps, which all share
-  the localhost jar. Unset, localhost and IP access work as Rails defaults.
+  `config/environments/development.rb` — named hosts isolate cookies
+  between the fleet's apps, which all share the localhost jar. Unset,
+  localhost and IP access work as Rails defaults.
   Browse at `http://comrade.local:1917`.
 
 ## Session docs
