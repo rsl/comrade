@@ -1,3 +1,3 @@
 <%= chat_surface(endpoint: conversations_path, fresh: true) %>
 
-<%= recent_conversations(@conversations) %>
+<%= recent_conversations(@conversations, archived: @archived) %>

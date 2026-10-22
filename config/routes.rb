@@ -9,7 +9,14 @@ Rails.application.routes.draw do
   # resource's address (Location header) is already part of the 2a contract.
   root 'conversations#index'
 
-  resources :conversations, only: %i[index create show] do
+  resources :conversations, only: %i[index create show destroy] do
+    collection do
+      get :archived
+    end
+    member do
+      patch :archive
+      patch :unarchive
+    end
     resources :messages, only: [:create]
   end
 

@@ -56,6 +56,7 @@ module Comrade
       # had already shown; it persists first so the model sees its own
       # cut-off sentence followed by the new message.
       reply.append_message(role: 'assistant', content: interrupted) if interrupted.present?
+      conversation.resurrect if conversation.archived?
       reply.append_message(role: 'user', content: content)
       reply.enumerator
     end
