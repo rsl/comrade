@@ -115,7 +115,9 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
 - **Never commit without asking.** Commit style: active sentences
   ("Add …", "Fix …", "Wire up …"); a repo's first commit is "initial
   commit" with a body that tells the story. Granular commits — one logical
-  unit each.
+  unit each. When a follow-up change belongs to the unpushed commit just
+  made (a fixup of it, or the same decision continuing), `--amend` into
+  it instead of adding a new commit; never amend a pushed commit.
 - **`main` changes only through pull requests** (branch rules enforce it —
   direct pushes are rejected). Branch from up-to-date `main` with the
   `rsl-` prefix; batch a working session's commits onto one branch and one
