@@ -30,6 +30,9 @@ gem 'solid_cache'
 # Postgres-backed Active Job queue with a dashboard
 gem 'good_job'
 
+# Tailwind CSS via a Rust binary — no Node [https://github.com/rails/tailwindcss-rails]
+gem 'tailwindcss-rails'
+
 # Reduces boot times through caching; required in config/boot.rb
 gem 'bootsnap', require: false
 
