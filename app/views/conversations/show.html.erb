@@ -1,7 +1,5 @@
-<header class="mx-auto max-w-2xl px-5 pt-16">
-  <h1 class="truncate text-xl font-medium text-neutral-200">
-    <%= link_to @conversation.title.presence || '(untitled)', root_path, class: 'hover:text-neutral-100' %>
-  </h1>
-</header>
+<p class="mx-auto max-w-2xl px-5 pt-10 text-sm truncate text-neutral-500">
+  <%= @conversation.title.presence || '(untitled)' %>
+</p>
 
 <%= chat_surface(endpoint: conversation_messages_path(@conversation), fresh: false, conversation: @conversation, messages: @conversation.messages) %>
