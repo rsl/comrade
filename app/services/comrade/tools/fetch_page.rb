@@ -1,3 +1,5 @@
+require 'net/http'
+
 module Comrade
   module Tools
     # Full-page extraction via Tavily's extract API. Returns the page's raw

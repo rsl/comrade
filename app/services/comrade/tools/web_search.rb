@@ -1,3 +1,5 @@
+require 'net/http'
+
 module Comrade
   module Tools
     # Web search via SearXNG's JSON API (`?q=&format=json`). Returns the top
@@ -31,8 +33,12 @@ module Comrade
 
       def fetch_response
         Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https') do |http|
-          http.request(Net::HTTP::Get.new("#{ uri.request_uri }?#{ query }"))
+          http.request(Net::HTTP::Get.new(search_uri.request_uri))
         end
+      end
+
+      def search_uri
+        @search_uri ||= URI.parse("#{ base_url.chomp('/') }/search?#{ query }")
       end
 
       def search_results(response)
