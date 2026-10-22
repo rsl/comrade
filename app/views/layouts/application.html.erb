@@ -15,6 +15,9 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon.png">
 
+    <%# Restores the saved root font size before first paint (see
+        font_scale_boot.js and the font-sizer controller). %>
+    <%= javascript_include_tag 'font_scale_boot' %>
     <%= stylesheet_link_tag :tailwind, "data-turbo-track": 'reload' %>
     <%= javascript_importmap_tags %>
   </head>
@@ -25,6 +28,10 @@
         <%= link_to 'Comrade', root_path %>
       </h1>
       <p class="mt-1 text-sm text-neutral-500">Seize the means of information retrieval.</p>
+      <div data-controller="font-sizer" class="fixed top-4 right-4 flex items-center gap-2 text-sm text-neutral-500">
+        <button data-action="font-sizer#smaller" class="rounded border border-neutral-700 px-2 py-0.5 hover:text-neutral-200" aria-label="Smaller text">A−</button>
+        <button data-action="font-sizer#larger" class="rounded border border-neutral-700 px-2 py-0.5 hover:text-neutral-200" aria-label="Larger text">A+</button>
+      </div>
     </header>
 
     <%= yield %>
