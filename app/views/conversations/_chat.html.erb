@@ -24,7 +24,7 @@
         name="content"
         rows="1"
         required
-        placeholder="What do you need, comrade?"
+        placeholder="<%= messages.any? ? 'Reply…' : 'What do you need, comrade?' %>"
         data-action="keydown->stream-reader#keydown"
         class="grow resize-none rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 leading-snug focus:border-neutral-500 focus:outline-none"
       ></textarea>
