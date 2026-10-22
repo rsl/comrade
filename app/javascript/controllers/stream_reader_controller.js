@@ -11,6 +11,14 @@ export default class extends Controller {
   static targets = ["form", "transcript"]
   static values = { endpoint: String, fresh: Boolean }
 
+  // Cmd+Enter / Ctrl+Enter sends; plain Enter stays a newline.
+  keydown(event) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      event.target.form.requestSubmit()
+    }
+  }
+
   async submit(event) {
     event.preventDefault()
     const input = event.target.elements.content
