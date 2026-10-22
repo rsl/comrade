@@ -15,27 +15,57 @@ module ConversationsHelper
     render 'recent', conversations:
   end
 
-  # Answer text with [n] markers rendered as superscript links into the
-  # message's numbered source list. Paragraphs split on blank lines.
-  # The model tends to append its own "Sources:" footer and number
-  # markers against it, regardless of the tool-layer numbering. The
-  # footer is parsed into a marker→url map and stripped; each marker is
-  # then rewritten to point at the matching entry in the canonical
-  # citation list. Without a footer, a marker is read as a direct index.
+  # Answer paragraphs with per-paragraph source chips. Inline [n] markers
+  # never render: combined with the model's "Sources:" footer they are the
+  # paragraph→source signal, consumed and stripped. A paragraph with no
+  # resolvable markers renders bare; the footer itself never renders.
   def cited_paragraphs(message)
     citations = message.citations || []
     body, marker_urls = footer_map(message.content)
-    # html_safe is sound: the paragraph ran through h() and the only
-    # interpolation added is link_markers' own anchor markup.
+    # html_safe is sound: the paragraph text ran through h() and the only
+    # additions are source_chips' own anchor markup.
     paragraphs = body.split(/\n\n+/).map do |paragraph|
-      marked = link_markers(h(sans_sup_tags(paragraph)), citations, marker_urls)
-      # The only html_safe content is h()'d text plus link_markers' own
-      # anchor markup — no model-controlled raw HTML survives escaping.
+      plain, urls = paragraph_sources(paragraph, citations, marker_urls)
       # rubocop:disable Rails/OutputSafety
-      content_tag(:p, marked.html_safe, class: 'mb-3 last:mb-0')
+      content_tag(:p, h(sans_sup_tags(plain)).html_safe, class: 'mb-3 last:mb-0') +
+        content_tag(:div, source_chips(urls), class: 'mt-1 mb-4 text-xs text-neutral-500')
       # rubocop:enable Rails/OutputSafety
     end
     safe_join(paragraphs)
+  end
+
+  # Strips [n] markers from a paragraph and collects the source hashes
+  # they resolve to — canonical citations where the url matches, bare
+  # url/title pairs when the model cited something outside the list.
+  # :reek:TooManyStatements — the gsub block is one coherent scan.
+  def paragraph_sources(paragraph, citations, marker_urls)
+    sources = []
+    plain = paragraph.gsub(/\[(\d+)\]/) do
+      url = marker_urls[Regexp.last_match(1).to_i]
+      if url
+        # jsonb row data — string keys are the storage contract.
+        # rubocop:disable Style/StringHashKeys
+        known = citations.detect { |citation| citation['url'] == url }
+        sources << (known || { 'url' => url, 'title' => URI.parse(url).host })
+        # rubocop:enable Style/StringHashKeys
+      end
+      ''
+    end
+    [sans_sup_tags(plain), sources.uniq { |source| source['url'] }]
+  end
+
+  # Inline source chips: title-only links, quiet, one per source.
+  def source_chips(sources)
+    return ''.html_safe if sources.blank?
+
+    links = sources.map do |source|
+      link_to(source['title'] || source['url'],
+        source['url'],
+        target: '_blank',
+        rel: 'noopener',
+        class: 'underline hover:text-neutral-300',)
+    end
+    safe_join(['sources: '.html_safe, safe_join(links, ' · ')])
   end
 
   # The model sometimes copies the interface's superscript markup into
@@ -64,39 +94,10 @@ module ConversationsHelper
   end
 
   # :reek:NilCheck — a nil index is the signal: the marker stays as written.
-  def link_markers(escaped_paragraph, citations, marker_urls)
-    escaped_paragraph.gsub(/\[(\d+)\]/) do
-      marker = Regexp.last_match(1).to_i
-      index = marker_index(marker, citations, marker_urls)
-      # A nil index — no footer entry, out of range — leaves the marker
-      # as the model wrote it.
-      next Regexp.last_match(0) if index.nil?
-
-      %Q(<sup><a href="#src-#{ index }" class="hover:text-neutral-300">#{ index }</a></sup>)
-    end
-  end
-
-  # :reek:NilCheck — a nil index means the marker stays as written.
   def marker_index(marker, citations, marker_urls)
     url = marker_urls[marker]
     return citations.index { |citation| citation['url'] == url }&.next if url
 
     marker if marker.between?(1, citations.size)
-  end
-
-  # The numbered source list that [n] anchors point into.
-  def cited_sources(message)
-    citations = message.citations || []
-    return if citations.blank?
-
-    items = citations.each_with_index.map do |citation, index|
-      link = link_to(citation['title'] || citation['url'],
-        citation['url'],
-        target: '_blank',
-        rel: 'noopener',
-        class: 'underline hover:text-neutral-300',)
-      content_tag(:li, link, id: "src-#{ index + 1 }")
-    end
-    tag.ol(safe_join(items), class: 'list-decimal ml-4 space-y-0.5')
   end
 end

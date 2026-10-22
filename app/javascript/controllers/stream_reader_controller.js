@@ -159,13 +159,12 @@ export default class extends Controller {
     return false
   }
 
-  // End-of-stream formatting: paragraphs split on blank lines, [n]
-  // markers become superscript anchors into the numbered source list.
-  // During the stream the markers show as literal text — they can split
-  // across deltas, so the transformation waits for the whole answer.
-  // The model tends to write its own "Sources:" footer and number
-  // markers against it; the footer is parsed into a marker→url map,
-  // stripped, and markers rewritten to the canonical citation list.
+  // End-of-stream formatting: paragraphs split on blank lines; inline [n]
+  // markers plus the model's "Sources:" footer are consumed as the
+  // paragraph→source signal and stripped — each paragraph renders with
+  // quiet source chips under it, superscripts never appear. During the
+  // stream the markers show as literal text (they can split across
+  // deltas), so the transformation waits for the whole answer.
   renderCitations(answer) {
     const citations = this.pendingCitations || []
     const content = answer.querySelector("div")
@@ -181,29 +180,33 @@ export default class extends Controller {
       return "\n"
     })
 
-    const markerLink = (marker, n) => {
-      const url = markerUrls[n]
-      let index = url ? citations.findIndex((c) => c.url === url) + 1 : 0
-      if (!index) index = n >= 1 && n <= citations.length ? n : 0
-      return index ? `<sup><a href="#src-${index}" class="hover:text-neutral-300">${index}</a></sup>` : marker
-    }
-
     content.innerHTML = body.split(/\n\n+/).map((paragraph) => {
-      const escaped = escape(paragraph).replace(/\[(\d+)\]/g, (marker, n) => markerLink(marker, parseInt(n)))
-      return `<p>${escaped}</p>`
+      const urls = []
+      const plain = this.sansSup(paragraph).replace(/\[(\d+)\]/g, (marker, n) => {
+        const url = markerUrls[parseInt(n)]
+        if (!url) return marker
+        const citation = citations.find((c) => c.url === url)
+        urls.push(citation || { url, title: new URL(url).host })
+        return ""
+      })
+      const chips = this.sourceChips(urls, escape)
+      return `<p>${escape(plain)}</p>${chips}`
     }).join("")
-
-    if (citations.length > 0) {
-      const items = citations.map((c, i) => {
-        const label = escape(c.title || c.url)
-        return `<li id="src-${i + 1}"><a href="${escape(c.url)}" target="_blank" rel="noopener" class="underline hover:text-neutral-300">${label}</a></li>`
-      }).join("")
-      answer.insertAdjacentHTML("beforeend",
-        `<div class="mt-3 border-t border-neutral-800 pt-2 text-xs text-neutral-500">Sources:<ol class="list-decimal ml-4 space-y-0.5">${items}</ol></div>`)
-    } else {
-      answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
-    }
+    if (!citations.length) answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
     this.pendingCitations = null
+  }
+
+  // The model sometimes copies the interface's superscript markup into
+  // its own text; it renders as escaped noise, so it goes.
+  sansSup(text) {
+    return text.replace(/<\/?sup[^>]*>/g, "")
+  }
+
+  sourceChips(sources, escape) {
+    if (!sources.length) return ""
+    const links = sources.map((s) =>
+      `<a href="${escape(s.url)}" target="_blank" rel="noopener" class="underline hover:text-neutral-300">${escape(s.title || s.url)}</a>`)
+    return `<div class="mt-1 mb-4 text-xs text-neutral-500">sources: ${links.join(" · ")}</div>`
   }
 
   toolChip(event) {
