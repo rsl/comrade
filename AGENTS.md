@@ -10,7 +10,7 @@ citations. AGPL-3.0. Personal tool, built public-first.
 
 - Rails 8.1, Ruby 4.0, PostgreSQL. No Redis anywhere, ever — GoodJob for
   jobs, Solid Cache + Solid Cable for the rest.
-- Model endpoint: `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` from ENV.
+- Model endpoint: `COMRADE_LLM_BASE_URL` / `COMRADE_LLM_API_KEY` / `COMRADE_LLM_MODEL` from ENV.
   Local dev uses oMLX on 127.0.0.1:8888 (OpenAI-compatible). Never hardcode
   provider names in Ruby.
 - Search: SearXNG (bare install, planned localhost:8889), page fetch via

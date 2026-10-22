@@ -41,9 +41,9 @@ model and no auth: Comrade is single-user and localhost-bound by design.
 
 Five runtime environment variables, nothing else:
 
-- `LLM_BASE_URL` — any OpenAI-compatible chat-completions endpoint
-- `LLM_API_KEY`
-- `LLM_MODEL`
+- `COMRADE_LLM_BASE_URL` — any OpenAI-compatible chat-completions endpoint
+- `COMRADE_LLM_API_KEY`
+- `COMRADE_LLM_MODEL`
 - `TAVILY_API_KEY` — page extraction
 - `SEARXNG_URL` — search
 

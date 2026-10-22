@@ -16,8 +16,8 @@ a search?" heuristics to Ruby.
 - **The system prompt file owns tone and search judgment.** "Answer, cite,
   never ask follow-ups" and "search only when you lack the facts" live in
   the prompt file, not in code. Iterate there; it's the tuning surface.
-- **Model/endpoint are config, not code.** `LLM_BASE_URL`, `LLM_API_KEY`,
-  `LLM_MODEL` from ENV. Any OpenAI-compatible endpoint must work. No
+- **Model/endpoint are config, not code.** `COMRADE_LLM_BASE_URL`, `COMRADE_LLM_API_KEY`,
+  `COMRADE_LLM_MODEL` from ENV. Any OpenAI-compatible endpoint must work. No
   provider names in the Ruby.
 - **No Redis. Ever.** Streaming goes to the HTTP response; background work
   is GoodJob. Cable broadcasts (Solid Cable) if a page needs live updates.

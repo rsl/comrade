@@ -100,7 +100,7 @@ module Comrade
     end
 
     def base_url
-      ENV.fetch('LLM_BASE_URL') { raise UnavailableError, 'LLM_BASE_URL is not set' }
+      ENV.fetch('COMRADE_LLM_BASE_URL') { raise UnavailableError, 'COMRADE_LLM_BASE_URL is not set' }
     end
 
     def headers
@@ -108,14 +108,14 @@ module Comrade
       # guarding keyword-argument hashes, which this isn't.
       # rubocop:disable Style/StringHashKeys
       { 'Content-Type' => 'application/json' }.tap do |header|
-        header['Authorization'] = "Bearer #{ ENV['LLM_API_KEY'] }" if ENV['LLM_API_KEY']
+        header['Authorization'] = "Bearer #{ ENV['COMRADE_LLM_API_KEY'] }" if ENV['COMRADE_LLM_API_KEY']
       end
       # rubocop:enable Style/StringHashKeys
     end
 
     def payload
       {
-        model: ENV.fetch('LLM_MODEL'),
+        model: ENV.fetch('COMRADE_LLM_MODEL'),
         messages: [role: 'system', content: prompt] + @conversation.to_transcript,
         stream: true,
       }
