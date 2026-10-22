@@ -28,9 +28,12 @@
         <%= link_to 'Comrade', root_path %>
       </h1>
       <p class="mt-1 text-sm text-neutral-500">Seize the means of information retrieval.</p>
-      <div data-controller="font-sizer" class="fixed top-4 right-4 flex items-center gap-2 text-sm text-neutral-500">
+      <div class="fixed top-4 right-4 flex items-center gap-2 text-sm text-neutral-500">
+        <%= link_to '+ New', root_path, class: 'rounded border border-neutral-700 px-2 py-0.5 hover:text-neutral-200' %>
+        <span data-controller="font-sizer" class="flex items-center gap-2">
         <button data-action="font-sizer#smaller" class="rounded border border-neutral-700 px-2 py-0.5 hover:text-neutral-200" aria-label="Smaller text">A−</button>
         <button data-action="font-sizer#larger" class="rounded border border-neutral-700 px-2 py-0.5 hover:text-neutral-200" aria-label="Larger text">A+</button>
+        </span>
       </div>
     </header>
 
