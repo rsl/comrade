@@ -19,9 +19,17 @@ module StreamsReply
 
   def stream_reply(conversation)
     set_stream_headers
-    reply = Comrade::Reply.call(conversation: conversation,
-      content: params.require(:content),
-      interrupted: params[:interrupted],)
+    # :reek:ControlParameter — the request picks the entry point; that is
+    # the controller's job.
+    reply = if ActiveModel::Type::Boolean.new.cast(params[:retry])
+      Comrade::Reply.call_retry(conversation: conversation,
+        content: params.require(:content),
+        interrupted: params[:interrupted],)
+    else
+      Comrade::Reply.call(conversation: conversation,
+        content: params.require(:content),
+        interrupted: params[:interrupted],)
+    end
     self.response_body = reply_enumerator(reply)
   end
 

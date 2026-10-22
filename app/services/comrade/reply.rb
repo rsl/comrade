@@ -52,13 +52,25 @@ module Comrade
 
     def self.call(conversation:, content:, interrupted: nil)
       reply = new(conversation: conversation, content: content)
+      persist_lead_in(reply, conversation, interrupted)
+      reply.append_message(role: 'user', content: content)
+      reply.enumerator
+    end
+
+    # A retried reply: the user message persisted with the failed attempt,
+    # so only the lead-in (steered partial, resurrection) applies.
+    def self.call_retry(conversation:, content:, interrupted: nil)
+      reply = new(conversation: conversation, content: content)
+      persist_lead_in(reply, conversation, interrupted)
+      reply.enumerator
+    end
+
+    def self.persist_lead_in(reply, conversation, interrupted)
       # A steered reply carries the partial answer the interrupted stream
       # had already shown; it persists first so the model sees its own
       # cut-off sentence followed by the new message.
       reply.append_message(role: 'assistant', content: interrupted) if interrupted.present?
       conversation.resurrect if conversation.archived?
-      reply.append_message(role: 'user', content: content)
-      reply.enumerator
     end
 
     def initialize(conversation:, content:)

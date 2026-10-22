@@ -37,10 +37,17 @@ export default class extends Controller {
     if (!content) return
 
     input.value = ""
+    this.clearRetries()
     const interrupted = this.partial
     if (this.currentRequest) this.currentRequest.abort()
 
     const answer = this.appendExchange(content)
+    await this.stream(content, interrupted, answer, { retry: false })
+  }
+
+  // The one reply path: POST, stream into the given assistant turn, and
+  // on any failure leave a retry link bound to the same content.
+  async stream(content, interrupted, answer, { retry }) {
     this.partial = ""
     this.pendingCitations = null
     this.currentRequest = new AbortController()
@@ -50,16 +57,17 @@ export default class extends Controller {
       response = await fetch(this.endpointValue, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ content, interrupted }),
+        body: JSON.stringify({ content, interrupted, retry }),
         signal: this.currentRequest.signal,
       })
     } catch (error) {
       if (error.name === "AbortError") return
-      throw error
+      this.showRetry(content, interrupted, answer)
+      return
     }
 
     if (!response.ok) {
-      this.showFailure(answer, response)
+      this.showRetry(content, interrupted, answer)
       return
     }
 
@@ -76,7 +84,7 @@ export default class extends Controller {
     } catch (error) {
       // A steered-away stream dies intentionally; its partial answer
       // stays on the page and in the transcript via the next request.
-      if (error.name !== "AbortError") throw error
+      if (error.name !== "AbortError") this.showRetry(content, interrupted, answer)
       return
     }
     // Only the index page visits on completion: the first exchange (or,
@@ -84,6 +92,47 @@ export default class extends Controller {
     // a Turbo visit to the conversation's permanent address. On a show
     // page exchanges append in place.
     if (this.freshValue) Turbo.visit(this.conversationUrl)
+  }
+
+  // A failed turn offers a one-click resend. The retry is a steer: the
+  // user message already exists server-side (it persists eagerly), so
+  // the retry request skips user persistence and carries whatever partial
+  // answer had streamed as interruption context.
+  showRetry(content, interrupted, answer) {
+    this.clearThinking()
+    this.failed = { content, interrupted }
+
+    const line = document.createElement("p")
+    line.className = "retry-line mt-2 text-xs text-red-400"
+    line.append("reply failed — ")
+    const link = document.createElement("a")
+    link.href = "#"
+    link.textContent = "retry?"
+    link.className = "underline"
+    link.addEventListener("click", (event) => {
+      event.preventDefault()
+      this.retry()
+    })
+    line.append(link)
+    answer.append(line)
+  }
+
+  clearRetries() {
+    this.element.querySelectorAll(".retry-line").forEach((el) => el.remove())
+  }
+
+  async retry() {
+    this.clearRetries()
+    const { content, interrupted } = this.failed
+
+    // The retried answer arrives as a fresh assistant turn below the
+    // failed one; the user turn is already on the page and in the DB.
+    this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
+    const turns = this.transcriptTarget.querySelectorAll("article")
+    const answer = turns[turns.length - 1]
+    this.showThinking(answer)
+
+    await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null })
   }
 
   appendExchange(content) {
@@ -216,12 +265,6 @@ export default class extends Controller {
 
   get ownKnowledgeHtml() {
     return '<div class="mt-3 border-t border-neutral-800 pt-2 text-xs text-neutral-500">from own knowledge</div>'
-  }
-
-  async showFailure(answer, response) {
-    this.clearThinking()
-    const body = await response.json().catch(() => ({}))
-    answer.querySelector("div").textContent = body.errors ? body.errors.join(", ") : "The reply failed. Try again."
   }
 
   scrollToBottom() {
