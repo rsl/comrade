@@ -1,2 +1,7 @@
 #!/usr/bin/env ruby
+# Dev-only port namespace: COMRADE_PORT wins over ambient PORT, an explicit
+# -p flag still wins over both, and Rails' 3000 default sits underneath.
+# Kept in bin/dev rather than puma.rb so a leaked COMRADE_PORT can never
+# shadow the PORT that Kamal sets in production.
+ENV["PORT"] = ENV["COMRADE_PORT"] if ENV["COMRADE_PORT"]
 exec "./bin/rails", "server", *ARGV

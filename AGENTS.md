@@ -18,7 +18,10 @@ citations. AGPL-3.0. Personal tool, built public-first.
 - Linting: RuboCop (`.rubocop.yml`, with a project-local custom cop in
   `lib/rubocop/cop/`), Reek, Herb, lefthook pre-commit. All four must stay
   clean; run them before saying done.
-- Dev server on the Rails default port 3000.
+- Dev server: `bin/dev` serves on `COMRADE_PORT` (1917 on this machine,
+  exported in `~/.oh-my-zsh/custom/exports.zsh`). Precedence: `-p` flag >
+  `COMRADE_PORT` > ambient `PORT` > Rails' 3000. The mapping lives only in
+  `bin/dev`, so production's Kamal-set `PORT` is untouchable by it.
 
 ## Session docs
 
@@ -57,7 +60,7 @@ page headlessly, then Read the png (images render for the agent):
 ```
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
   --disable-gpu --screenshot=tmp/page.png --window-size=1280,2400 \
-  --hide-scrollbars "http://localhost:3000/<path>"
+  --hide-scrollbars "http://localhost:1917/<path>"
 ```
 
 The loop for any UI work: change → screenshot → look → fix. Bring rsl in

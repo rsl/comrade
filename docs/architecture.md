@@ -39,13 +39,18 @@ model and no auth: Comrade is single-user and localhost-bound by design.
 
 ## Configuration
 
-Five environment variables, nothing else:
+Five runtime environment variables, nothing else:
 
 - `LLM_BASE_URL` — any OpenAI-compatible chat-completions endpoint
 - `LLM_API_KEY`
 - `LLM_MODEL`
 - `TAVILY_API_KEY` — page extraction
 - `SEARXNG_URL` — search
+
+Plus one dev-only convenience: `COMRADE_PORT` — the port `bin/dev` serves
+on (maps to `PORT` before exec; unset, `PORT`, then Rails' 3000 apply).
+It exists so a fleet of apps can each own a named port variable without
+contesting the generic one; production never reads it.
 
 Nothing in the code knows a provider's name. The model endpoint is
 interchangeable by construction.
