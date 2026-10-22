@@ -18,15 +18,22 @@
     <p class="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
       <%= message.role == 'user' ? 'You' : 'Comrade' %>
     </p>
-    <div class="whitespace-pre-wrap leading-relaxed"><%= message.content %></div>
+    <div class="whitespace-pre-wrap leading-relaxed">
+      <% if message.role == 'assistant' %>
+        <%= cited_paragraphs(message) %>
+      <% else %>
+        <%= message.content %>
+      <% end %>
+    </div>
     <% if message.role == 'assistant' %>
-      <div class="mt-3 border-t border-neutral-800 pt-2 text-xs text-neutral-500">
-        <% if message.citations.present? %>
-          <%= pluralize(message.citations.size, 'source') %>: <%= citation_links(message.citations) %>
-        <% else %>
-          from own knowledge
-        <% end %>
-      </div>
+      <% if message.citations.present? %>
+        <div class="mt-3 border-t border-neutral-800 pt-2 text-xs text-neutral-500">
+          Sources:
+          <%= cited_sources(message) %>
+        </div>
+      <% else %>
+        <div class="mt-3 border-t border-neutral-800 pt-2 text-xs text-neutral-500">from own knowledge</div>
+      <% end %>
     <% end %>
   </article>
 <% end %>

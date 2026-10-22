@@ -42,6 +42,7 @@ export default class extends Controller {
 
     const answer = this.appendExchange(content)
     this.partial = ""
+    this.pendingCitations = null
     this.currentRequest = new AbortController()
 
     let response
@@ -132,7 +133,7 @@ export default class extends Controller {
         const data = event.replace(/^data: /, "")
         if (data === "[DONE]") {
           this.clearThinking()
-          if (!sawCitations) answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
+          this.renderCitations(answer)
           return
         }
         if (this.applyEvent(answer, JSON.parse(data))) sawCitations = true
@@ -151,23 +152,63 @@ export default class extends Controller {
       this.clearThinking()
       answer.insertAdjacentHTML("beforeend", this.toolChip(event))
       this.showThinking(answer)
-    } else if (event.type === "citations" && event.citations.length > 0) {
-      answer.insertAdjacentHTML("beforeend", this.citationsHtml(event.citations))
-      return true
+    } else if (event.type === "citations") {
+      this.pendingCitations = event.citations
+      return event.citations.length > 0
     }
     return false
+  }
+
+  // End-of-stream formatting: paragraphs split on blank lines, [n]
+  // markers become superscript anchors into the numbered source list.
+  // During the stream the markers show as literal text — they can split
+  // across deltas, so the transformation waits for the whole answer.
+  // The model tends to write its own "Sources:" footer and number
+  // markers against it; the footer is parsed into a marker→url map,
+  // stripped, and markers rewritten to the canonical citation list.
+  renderCitations(answer) {
+    const citations = this.pendingCitations || []
+    const content = answer.querySelector("div")
+    const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+
+    const markerUrls = {}
+    const body = this.partial.replace(/\n?Sources?:\n((?:\s*\[\d+\][^\n]*\n?)+)\s*$/, (block, lines) => {
+      for (const line of lines.split("\n")) {
+        const match = line.match(/^\s*\[(\d+)\]\s*(.+)$/)
+        const url = match && (match[2].match(/https?:\/\/\S+/) || [])[0]
+        if (match && url) markerUrls[parseInt(match[1])] = url
+      }
+      return "\n"
+    })
+
+    const markerLink = (marker, n) => {
+      const url = markerUrls[n]
+      let index = url ? citations.findIndex((c) => c.url === url) + 1 : 0
+      if (!index) index = n >= 1 && n <= citations.length ? n : 0
+      return index ? `<sup><a href="#src-${index}" class="hover:text-neutral-300">${index}</a></sup>` : marker
+    }
+
+    content.innerHTML = body.split(/\n\n+/).map((paragraph) => {
+      const escaped = escape(paragraph).replace(/\[(\d+)\]/g, (marker, n) => markerLink(marker, parseInt(n)))
+      return `<p>${escaped}</p>`
+    }).join("")
+
+    if (citations.length > 0) {
+      const items = citations.map((c, i) => {
+        const label = escape(c.title || c.url)
+        return `<li id="src-${i + 1}"><a href="${escape(c.url)}" target="_blank" rel="noopener" class="underline hover:text-neutral-300">${label}</a></li>`
+      }).join("")
+      answer.insertAdjacentHTML("beforeend",
+        `<div class="mt-3 border-t border-neutral-800 pt-2 text-xs text-neutral-500">Sources:<ol class="list-decimal ml-4 space-y-0.5">${items}</ol></div>`)
+    } else {
+      answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
+    }
+    this.pendingCitations = null
   }
 
   toolChip(event) {
     const label = event.query ? `searched for ${event.query}` : `fetched ${event.url}`
     return `<p class="mt-2 text-xs text-neutral-500">— ${label}</p>`
-  }
-
-  citationsHtml(citations) {
-    const links = citations
-      .map((c) => `<a href="${c.url}" target="_blank" rel="noopener" class="underline hover:text-neutral-300">${c.title || c.url}</a>`)
-      .join(" · ")
-    return `<div class="mt-3 border-t border-neutral-800 pt-2 text-xs text-neutral-500">${citations.length} ${citations.length === 1 ? "source" : "sources"}: ${links}</div>`
   }
 
   get ownKnowledgeHtml() {

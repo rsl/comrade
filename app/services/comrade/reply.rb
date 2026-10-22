@@ -63,6 +63,9 @@ module Comrade
     def initialize(conversation:, content:)
       @conversation = conversation
       @content = content
+      # Sources are numbered across every tool call in the reply, matching
+      # the citation list the interface renders.
+      @next_citation_index = 0
     end
 
     # The user message is persisted eagerly (so validation errors surface
@@ -169,22 +172,37 @@ module Comrade
 
     def dispatch_tool(name, arguments)
       case name
-      when 'web_search' then search_with_citations(arguments['query'])
-      when 'fetch_page' then fetch_with_citations(arguments['url'])
+      when 'web_search' then number_citations(arguments['query']) { search_results(arguments['query']) }
+      when 'fetch_page' then number_citations(arguments['url']) { fetch_content(arguments['url']) }
       else ["Unknown tool: #{ name }", []]
       end
     end
 
-    def search_with_citations(query)
-      results = Tools::WebSearch.call(query: query)
-      citations = results.is_a?(Array) ? results.map { |result| { title: result['title'], url: result['url'] } } : []
-      [results.to_json, citations]
+    # Sources are numbered at the tool layer — "[3] Title — url" — so the
+    # model's inline [n] markers match the citation list the interface
+    # renders. The counter runs across all tool calls in one reply.
+    def number_citations(label)
+      content, citations = yield
+      numbered = citations.each_with_index.map do |citation, offset|
+        "[#{ @next_citation_index + offset + 1 }] #{ citation[:title] } — #{ citation[:url] }"
+      end
+      @next_citation_index += citations.size
+      ["#{ label }:\n#{ content }\n\n#{ numbered.join("\n") }", citations]
     end
 
-    def fetch_with_citations(url)
+    def search_results(query)
+      results = Tools::WebSearch.call(query: query)
+      return ['(no results)', []] unless results.is_a?(Array)
+
+      [results.map { |result| result['content'] }.join("\n"),
+       results.map { |result| { title: result['title'], url: result['url'] } },]
+    end
+
+    def fetch_content(url)
       content = Tools::FetchPage.call(url: url)
-      citations = content.start_with?('Fetch ') ? [] : [title: url, url: url]
-      [content, citations]
+      return ['(no content extracted)', []] if content.start_with?('Fetch ', 'No content')
+
+      [content, [title: url, url: url]]
     end
 
     def persist_answer(content, citations, yielder)
