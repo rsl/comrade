@@ -2,10 +2,9 @@
 # Foreground dev server: bin/dev [server flags] — plain passthrough to
 # `rails server`, with the COMRADE_PORT/PORT mapping below.
 #
-# Background daemon: bin/dev start|stop|restart|status|logs — a detached
-# process logging to log/dev-server.log with its pid in tmp/pids/devd.pid.
-# GoodJob runs in-process in development, so the web server is the only
-# process to manage; revisit when a real worker exists.
+# Background daemon: bin/dev start|stop|restart|status|logs — detached
+# processes (web + GoodJob worker) logging to log/dev-server.log with pids
+# in tmp/pids/devd.pid and tmp/pids/jobsd.pid.
 
 require 'socket'
 
@@ -25,11 +24,12 @@ def start_port
   ENV['COMRADE_PORT'] || ENV['PORT'] || stored_port || '3000'
 end
 PIDFILE = 'tmp/pids/devd.pid'
+JOBS_PIDFILE = 'tmp/pids/jobsd.pid'
 PORTFILE = 'tmp/pids/devd.port'
 LOGFILE = 'log/dev-server.log'
 
-def pid
-  File.read(PIDFILE).to_i
+def pid(pidfile = PIDFILE)
+  File.read(pidfile).to_i
 rescue Errno::ENOENT
   nil
 end
@@ -41,8 +41,9 @@ rescue Errno::ESRCH, Errno::EPERM
   false
 end
 
-def running?
-  pid && alive?(pid)
+def running?(pidfile = PIDFILE)
+  process_pid = pid(pidfile)
+  process_pid && alive?(process_pid)
 end
 
 def port_open?
@@ -63,12 +64,16 @@ end
 
 def start_server
   abort "already running (pid #{ pid })" if running?
-  spawned = Process.spawn('./bin/dev', out: [LOGFILE, 'a'], err: [:child, :out], pgroup: true)
-  File.write(PIDFILE, spawned)
+
   File.write(PORTFILE, start_port)
+  jobs = Process.spawn('./bin/jobs', out: [LOGFILE, 'a'], err: [:child, :out], pgroup: true)
+  File.write(JOBS_PIDFILE, jobs)
+  spawned = Process.spawn({ 'PORT' => start_port }, './bin/dev', out: [LOGFILE, 'a'], err: [:child, :out], pgroup: true)
+  File.write(PIDFILE, spawned)
+  Process.detach(jobs)
   Process.detach(spawned)
   if wait_for_port(15)
-    puts "comrade dev server on port #{ start_port } (pid #{ spawned }, log #{ LOGFILE })"
+    puts "comrade dev server on port #{ start_port } (pid #{ spawned }, jobs pid #{ jobs }, log #{ LOGFILE })"
   else
     puts "server did not come up on port #{ start_port } — last log lines:"
     system('tail', '-n', '20', LOGFILE)
@@ -76,9 +81,9 @@ def start_server
   end
 end
 
-def stop_server
-  current = pid
-  abort 'not running' unless running?
+def stop_process(pidfile)
+  current = pid(pidfile)
+  return unless current && alive?(current)
 
   Process.kill('TERM', current)
   20.times do
@@ -87,8 +92,16 @@ def stop_server
     sleep 0.25
   end
   Process.kill('KILL', current) if alive?(current)
-  File.delete(PIDFILE)
-  puts "stopped (pid #{ current })"
+  File.delete(pidfile)
+  current
+end
+
+def stop_server
+  abort 'not running' if !running?(PIDFILE) && !running?(JOBS_PIDFILE)
+
+  jobs_pid = stop_process(JOBS_PIDFILE)
+  web_pid = stop_process(PIDFILE)
+  puts "stopped (web pid #{ web_pid }, jobs pid #{ jobs_pid })"
 end
 
 case ARGV.first
@@ -97,12 +110,13 @@ when 'start'
 when 'stop'
   stop_server
 when 'restart'
-  stop_server if running?
+  stop_server if running?(PIDFILE) || running?(JOBS_PIDFILE)
   start_server
 when 'status'
-  if running?
+  if running?(PIDFILE)
     state = port_open? ? 'answering' : 'booting'
-    puts "running (pid #{ pid }, port #{ dev_port }, #{ state })"
+    jobs_state = running?(JOBS_PIDFILE) ? "jobs pid #{ pid(JOBS_PIDFILE) }" : 'jobs stopped'
+    puts "running (pid #{ pid }, port #{ dev_port }, #{ state }, #{ jobs_state })"
   else
     puts 'stopped'
   end
