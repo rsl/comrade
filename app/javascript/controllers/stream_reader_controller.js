@@ -4,12 +4,23 @@ import { Turbo } from "@hotwired/turbo-rails"
 // Streams an SSE reply into the transcript from a plain fetch: events are
 // JSON objects on `data:` lines ({type: "delta"|"tool"|"citations"}),
 // `[DONE]` ends the stream. Tool events render as "searched for X" chips
-// ahead of the answer text. On a fresh conversation the first exchange
-// streams in place, then Turbo visits the conversation's permanent address
-// (the Location header).
+// ahead of the answer text. Sending while a reply streams aborts it —
+// "steering": the partial answer is persisted as context, and the new
+// message is answered with the interruption in view. On the index page
+// the first exchange creates the conversation mid-flight; the response
+// names it, later exchanges post to its messages endpoint, and the first
+// completed stream visits the conversation's permanent address.
 export default class extends Controller {
   static targets = ["form", "transcript"]
   static values = { endpoint: String, fresh: Boolean }
+
+  // The in-flight request, abortable, and the partial answer text it has
+  // shown so far — the steer payload when a new message interrupts it.
+  currentRequest = null
+  partial = ""
+  // Set once a response names the conversation; drives the endpoint
+  // switch and the visit to the show page on completion.
+  conversationUrl = null
 
   // Cmd+Enter / Ctrl+Enter sends; plain Enter stays a newline.
   keydown(event) {
@@ -26,21 +37,52 @@ export default class extends Controller {
     if (!content) return
 
     input.value = ""
-    const answer = this.appendExchange(content)
+    const interrupted = this.partial
+    if (this.currentRequest) this.currentRequest.abort()
 
-    const response = await fetch(this.endpointValue, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify({ content }),
-    })
+    const answer = this.appendExchange(content)
+    this.partial = ""
+    this.currentRequest = new AbortController()
+
+    let response
+    try {
+      response = await fetch(this.endpointValue, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify({ content, interrupted }),
+        signal: this.currentRequest.signal,
+      })
+    } catch (error) {
+      if (error.name === "AbortError") return
+      throw error
+    }
 
     if (!response.ok) {
       this.showFailure(answer, response)
       return
     }
 
-    await this.readStream(response.body, answer)
-    if (this.freshValue) Turbo.visit(response.headers.get("Location"))
+    // The first response names the conversation (Location) and its id
+    // (X-Conversation-Id): every later exchange — including steers —
+    // belongs to that conversation's messages endpoint.
+    if (!this.conversationUrl) {
+      this.conversationUrl = response.headers.get("Location")
+      this.endpointValue = `${this.conversationUrl}/messages`
+    }
+
+    try {
+      await this.readStream(response.body, answer)
+    } catch (error) {
+      // A steered-away stream dies intentionally; its partial answer
+      // stays on the page and in the transcript via the next request.
+      if (error.name !== "AbortError") throw error
+      return
+    }
+    // Only the index page visits on completion: the first exchange (or,
+    // when steered, the exchange that carries the interruption) ends with
+    // a Turbo visit to the conversation's permanent address. On a show
+    // page exchanges append in place.
+    if (this.freshValue) Turbo.visit(this.conversationUrl)
   }
 
   appendExchange(content) {
@@ -88,6 +130,7 @@ export default class extends Controller {
   applyEvent(answer, event) {
     if (event.type === "delta") {
       answer.querySelector("div").textContent += event.text
+      this.partial += event.text
     } else if (event.type === "tool") {
       answer.insertAdjacentHTML("beforeend", this.toolChip(event))
     } else if (event.type === "citations" && event.citations.length > 0) {

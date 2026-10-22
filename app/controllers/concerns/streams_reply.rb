@@ -19,7 +19,9 @@ module StreamsReply
 
   def stream_reply(conversation)
     set_stream_headers
-    reply = Comrade::Reply.call(conversation: conversation, content: params.require(:content))
+    reply = Comrade::Reply.call(conversation: conversation,
+      content: params.require(:content),
+      interrupted: params[:interrupted],)
     self.response_body = reply_enumerator(reply)
   end
 

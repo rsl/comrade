@@ -50,8 +50,12 @@ module Comrade
       },
     ].freeze
 
-    def self.call(conversation:, content:)
+    def self.call(conversation:, content:, interrupted: nil)
       reply = new(conversation: conversation, content: content)
+      # A steered reply carries the partial answer the interrupted stream
+      # had already shown; it persists first so the model sees its own
+      # cut-off sentence followed by the new message.
+      reply.append_message(role: 'assistant', content: interrupted) if interrupted.present?
       reply.append_message(role: 'user', content: content)
       reply.enumerator
     end
