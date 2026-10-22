@@ -14,4 +14,16 @@ module ConversationsHelper
   def recent_conversations(conversations)
     render 'recent', conversations:
   end
+
+  # Source links joined with separators; titles fall back to the URL.
+  def citation_links(citations)
+    links = citations.map do |citation|
+      link_to citation['title'] || citation['url'],
+        citation['url'],
+        target: '_blank',
+        rel: 'noopener',
+        class: 'underline hover:text-neutral-300'
+    end
+    safe_join(links, ' · ')
+  end
 end

@@ -13,9 +13,18 @@ class Conversation < ApplicationRecord
   end
 
   # The transcript is what Comrade::Reply sends to the API: messages in
-  # conversation order, shaped per the OpenAI chat format. Tool-message
-  # shape (tool_call_id / name) arrives with 2b, when the loop consumes it.
+  # conversation order, shaped per the OpenAI chat format. Assistant rows
+  # that requested tools carry their tool_calls in tool_payload; tool rows
+  # carry their result as content and their call id in tool_payload.
   def to_transcript
-    messages.map { |message| { role: message.role, content: message.content } }
+    messages.map do |message|
+      if message.role == 'assistant' && message.tool_payload&.key?('tool_calls')
+        { role: 'assistant', content: message.content, tool_calls: message.tool_payload['tool_calls'] }
+      elsif message.role == 'tool'
+        { role: 'tool', tool_call_id: message.tool_payload['tool_call_id'], content: message.content }
+      else
+        { role: message.role, content: message.content }
+      end
+    end
   end
 end

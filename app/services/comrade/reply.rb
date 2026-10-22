@@ -3,8 +3,12 @@ require 'net/http'
 module Comrade
   # The reply loop: persists the user message, streams the model's answer
   # from any OpenAI-compatible chat-completions endpoint, and persists the
-  # assistant message on clean completion. Yields text deltas as they
-  # arrive — the caller owns transport (3a wires them into the response).
+  # assistant message on clean completion. Yields structured events —
+  # {type: 'delta'} text, {type: 'tool'} activity — the caller owns
+  # transport. When the model emits tool_calls, the loop pauses streaming,
+  # executes the tools, persists the exchange, and resumes with the results
+  # in context; the tool round trip is invisible to the wire except as
+  # tool events between text.
   # The system prompt is config, never a row: the shipped voice lives in
   # config/comrade_prompt.md, and a personal comrade_prompt.custom.md
   # (gitignored) overrides it wholesale.
@@ -14,6 +18,37 @@ module Comrade
 
     # The endpoint is unreachable or misconfigured.
     class UnavailableError < StandardError; end
+
+    MAX_TOOL_ROUNDS = 3
+
+    # Tool definitions in OpenAI's schema — the model names these in
+    # tool_calls; the registry below maps names to implementations.
+    DEFINITIONS = [
+      {
+        type: 'function',
+        function: {
+          name: 'web_search',
+          description: 'Search the web. Use when you lack the facts to answer.',
+          parameters: {
+            type: 'object',
+            properties: { query: { type: 'string', description: 'The search query' } },
+            required: ['query'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'fetch_page',
+          description: 'Fetch a URL and return its full text content.',
+          parameters: {
+            type: 'object',
+            properties: { url: { type: 'string', description: 'The URL to fetch' } },
+            required: ['url'],
+          },
+        },
+      },
+    ].freeze
 
     def self.call(conversation:, content:)
       reply = new(conversation: conversation, content: content)
@@ -33,26 +68,124 @@ module Comrade
       Enumerator.new { |yielder| stream_into(yielder) }
     end
 
-    def append_message(role:, content:)
-      @conversation.messages.create!(role: role, content: content)
+    def append_message(role:, content:, **fields)
+      @conversation.messages.create!(role: role, content: content, **fields)
     end
 
     private
 
     def stream_into(yielder)
-      answer = +''
-      each_delta do |delta|
-        answer << delta
-        yielder << delta
+      citations = []
+      MAX_TOOL_ROUNDS.times do
+        frame = stream_pass(yielder)
+        return persist_answer(frame[:content], citations, yielder) if frame[:tool_calls].empty?
+
+        citations += run_tool_round(frame, yielder)
       end
-      append_message(role: 'assistant', content: answer)
+      # The model kept calling tools past the cap — answer with what exists.
+      append_message(role: 'assistant', content: 'I hit the tool-use limit before I could finish.')
+    end
+
+    def run_tool_round(frame, yielder)
+      tool_calls = frame[:tool_calls].values
+      persist_tool_calls(frame[:content], tool_calls)
+      tool_calls.flat_map { |tool_call| run_tool_call(tool_call, yielder) }
+    end
+
+    def run_tool_call(tool_call, yielder)
+      arguments = JSON.parse(tool_call[:arguments])
+      result, found = execute_tool(tool_call[:name], arguments, yielder)
+      append_message(role: 'tool',
+        content: result,
+        tool_name: tool_call[:name],
+        tool_payload: { arguments: arguments, tool_call_id: tool_call[:id] },)
+      found
+    end
+
+    # One streaming request/response pass. Text deltas flow out as events;
+    # tool_call fragments accumulate until the stream ends, so the whole
+    # frame lands complete. Returns { content:, tool_calls: } (indexed).
+    def stream_pass(yielder)
+      content = +''
+      tool_calls = Hash.new { |hash, index| hash[index] = { id: nil, name: +'', arguments: +'' } }
+      each_frame { |delta| absorb_delta(delta, content, tool_calls, yielder) }
+      { content: content, tool_calls: tool_calls }
+    end
+
+    def absorb_delta(delta, content, tool_calls, yielder)
+      text = delta['content']
+      calls = delta['tool_calls']
+      return unless text || calls
+
+      absorb_text(text, content, yielder) if text
+      Array(calls).each { |fragment| absorb_tool_call(tool_calls, fragment) }
+    end
+
+    def absorb_text(text, content, yielder)
+      content << text
+      yielder << { type: 'delta', text: text }
+    end
+
+    def absorb_tool_call(tool_calls, fragment)
+      partial = tool_calls[fragment['index']]
+      partial[:id] = fragment['id'] if fragment['id']
+      partial[:name] << fragment.dig('function', 'name').to_s
+      partial[:arguments] << fragment.dig('function', 'arguments').to_s
+    end
+
+    # The assistant frame that requested tools persists with null content
+    # when it emitted none — the transcript rebuilds its tool_calls from
+    # tool_payload, keeping the wire conversation valid for later turns.
+    def persist_tool_calls(content, tool_calls)
+      append_message(role: 'assistant',
+        content: content.presence,
+        tool_payload: { tool_calls: tool_calls.map { |call| tool_call_frame(call) } },)
+    end
+
+    def tool_call_frame(call)
+      { id: call[:id],
+        type: 'function',
+        function: { name: call[:name], arguments: call[:arguments] }, }
+    end
+
+    def execute_tool(name, arguments, yielder)
+      yielder << { type: 'tool', name: name }.merge(arguments)
+      dispatch_tool(name, arguments)
+    rescue JSON::ParserError
+      ['Invalid tool arguments', []]
+    end
+
+    def dispatch_tool(name, arguments)
+      case name
+      when 'web_search' then search_with_citations(arguments['query'])
+      when 'fetch_page' then fetch_with_citations(arguments['url'])
+      else ["Unknown tool: #{ name }", []]
+      end
+    end
+
+    def search_with_citations(query)
+      results = Tools::WebSearch.call(query: query)
+      citations = results.is_a?(Array) ? results.map { |result| { title: result['title'], url: result['url'] } } : []
+      [results.to_json, citations]
+    end
+
+    def fetch_with_citations(url)
+      content = Tools::FetchPage.call(url: url)
+      citations = content.start_with?('Fetch ') ? [] : [title: url, url: url]
+      [content, citations]
+    end
+
+    def persist_answer(content, citations, yielder)
+      citations = citations.uniq { |citation| citation[:url] }.presence
+      append_message(role: 'assistant', content: content, citations: citations)
+      yielder << { type: 'citations', citations: citations || [] } if citations
     end
 
     # read_body yields raw TCP chunks whose boundaries ignore SSE event
-    # boundaries, so complete lines are buffered out here. The parser keeps
-    # only content deltas — role-only frames and (in 2b) tool_call frames
-    # arrive without content and are ignored at this layer.
-    def each_delta
+    # boundaries, so complete lines are buffered out here. The parser
+    # yields full delta objects — content and tool_call fragments both —
+    # and drops role-only frames and [DONE].
+    def each_frame
       buffer = +''
       stream_chunks do |chunk|
         buffer << chunk
@@ -68,7 +201,7 @@ module Comrade
       payload = line.strip[/\Adata: ?(.*)\z/, 1]
       return if payload.blank? || payload == '[DONE]'
 
-      JSON.parse(payload).dig('choices', 0, 'delta', 'content')
+      JSON.parse(payload).dig('choices', 0, 'delta')
     end
 
     def stream_chunks(&block)
@@ -117,6 +250,7 @@ module Comrade
       {
         model: ENV.fetch('COMRADE_LLM_MODEL'),
         messages: [role: 'system', content: prompt] + @conversation.to_transcript,
+        tools: DEFINITIONS,
         stream: true,
       }
     end

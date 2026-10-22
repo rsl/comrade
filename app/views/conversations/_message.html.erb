@@ -1,6 +1,32 @@
-<article class="<%= message.role == 'user' ? 'text-neutral-100' : 'text-neutral-300' %>">
-  <p class="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
-    <%= message.role == 'user' ? 'You' : 'Comrade' %>
+<%# One transcript turn. Tool exchanges render as quiet chips: the
+    assistant's tool_calls frame shows any spoken content only, and each
+    tool row becomes a "searched for / fetched" line. Assistant turns with
+    citations close with a sources list. %>
+<% if message.role == 'tool' %>
+  <p class="text-xs text-neutral-500">
+    — <%= message.tool_name == 'web_search' ? "searched for #{ message.tool_payload['arguments']['query'] }" : "fetched #{ message.tool_payload['arguments']['url'] }" %>
   </p>
-  <div class="whitespace-pre-wrap leading-relaxed"><%= message.content %></div>
-</article>
+<% elsif message.role == 'assistant' && message.tool_payload.present? %>
+  <% if message.content.present? %>
+    <article class="text-neutral-300">
+      <p class="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">Comrade</p>
+      <div class="whitespace-pre-wrap leading-relaxed"><%= message.content %></div>
+    </article>
+  <% end %>
+<% else %>
+  <article class="<%= message.role == 'user' ? 'text-neutral-100' : 'text-neutral-300' %>">
+    <p class="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
+      <%= message.role == 'user' ? 'You' : 'Comrade' %>
+    </p>
+    <div class="whitespace-pre-wrap leading-relaxed"><%= message.content %></div>
+    <% if message.role == 'assistant' %>
+      <div class="mt-3 border-t border-neutral-800 pt-2 text-xs text-neutral-500">
+        <% if message.citations.present? %>
+          <%= pluralize(message.citations.size, 'source') %>: <%= citation_links(message.citations) %>
+        <% else %>
+          from own knowledge
+        <% end %>
+      </div>
+    <% end %>
+  </article>
+<% end %>
