@@ -86,10 +86,24 @@ export default class extends Controller {
   }
 
   appendExchange(content) {
+    this.clearThinking()
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("user", content))
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
     const turns = this.transcriptTarget.querySelectorAll("article")
-    return turns[turns.length - 1]
+    const answer = turns[turns.length - 1]
+    this.showThinking(answer)
+    return answer
+  }
+
+  // The waiting state: a pulsing "thinking…" line inside the assistant
+  // turn, gone the moment real content lands. Tool chips replace it while
+  // a tool runs, and it returns while the model works after a tool.
+  showThinking(answer) {
+    answer.insertAdjacentHTML("beforeend", '<p class="thinking text-xs text-neutral-500 mt-1">thinking…</p>')
+  }
+
+  clearThinking() {
+    this.element.querySelectorAll(".thinking").forEach((el) => el.remove())
   }
 
   turnHtml(role, content) {
@@ -117,6 +131,7 @@ export default class extends Controller {
       for (const event of events) {
         const data = event.replace(/^data: /, "")
         if (data === "[DONE]") {
+          this.clearThinking()
           if (!sawCitations) answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
           return
         }
@@ -129,10 +144,13 @@ export default class extends Controller {
   // Returns true when the event carried citations.
   applyEvent(answer, event) {
     if (event.type === "delta") {
+      this.clearThinking()
       answer.querySelector("div").textContent += event.text
       this.partial += event.text
     } else if (event.type === "tool") {
+      this.clearThinking()
       answer.insertAdjacentHTML("beforeend", this.toolChip(event))
+      this.showThinking(answer)
     } else if (event.type === "citations" && event.citations.length > 0) {
       answer.insertAdjacentHTML("beforeend", this.citationsHtml(event.citations))
       return true
@@ -157,6 +175,7 @@ export default class extends Controller {
   }
 
   async showFailure(answer, response) {
+    this.clearThinking()
     const body = await response.json().catch(() => ({}))
     answer.querySelector("div").textContent = body.errors ? body.errors.join(", ") : "The reply failed. Try again."
   }
