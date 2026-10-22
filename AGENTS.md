@@ -22,6 +22,11 @@ citations. AGPL-3.0. Personal tool, built public-first.
   exported in `~/.oh-my-zsh/custom/exports.zsh`). Precedence: `-p` flag >
   `COMRADE_PORT` > ambient `PORT` > Rails' 3000. The mapping lives only in
   `bin/dev`, so production's Kamal-set `PORT` is untouchable by it.
+- Dev host: `COMRADE_HOST` (comrade.local here) is safelisted in
+  `config/environments/development.rb` and resolves via `/etc/hosts` —
+  named hosts isolate cookies between the fleet's apps, which all share
+  the localhost jar. Unset, localhost and IP access work as Rails defaults.
+  Browse at `http://comrade.local:1917`.
 
 ## Session docs
 
@@ -60,7 +65,7 @@ page headlessly, then Read the png (images render for the agent):
 ```
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
   --disable-gpu --screenshot=tmp/page.png --window-size=1280,2400 \
-  --hide-scrollbars "http://localhost:1917/<path>"
+  --hide-scrollbars "http://comrade.local:1917/<path>"
 ```
 
 The loop for any UI work: change → screenshot → look → fix. Bring rsl in

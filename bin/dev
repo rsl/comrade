@@ -1,7 +1,117 @@
 #!/usr/bin/env ruby
-# Dev-only port namespace: COMRADE_PORT wins over ambient PORT, an explicit
-# -p flag still wins over both, and Rails' 3000 default sits underneath.
-# Kept in bin/dev rather than puma.rb so a leaked COMRADE_PORT can never
-# shadow the PORT that Kamal sets in production.
-ENV["PORT"] = ENV["COMRADE_PORT"] if ENV["COMRADE_PORT"]
-exec "./bin/rails", "server", *ARGV
+# Foreground dev server: bin/dev [server flags] — plain passthrough to
+# `rails server`, with the COMRADE_PORT/PORT mapping below.
+#
+# Background daemon: bin/dev start|stop|restart|status|logs — a detached
+# process logging to log/dev-server.log with its pid in tmp/pids/devd.pid.
+# GoodJob runs in-process in development, so the web server is the only
+# process to manage; revisit when a real worker exists.
+
+require 'socket'
+
+def dev_port
+  ENV['COMRADE_PORT'] || ENV['PORT'] || stored_port || '3000'
+end
+
+# The running server's port, recorded at start — status/stop must describe
+# the running process even from a shell without the exports.
+def stored_port
+  File.read('tmp/pids/devd.port').strip
+rescue Errno::ENOENT
+  nil
+end
+
+def start_port
+  ENV['COMRADE_PORT'] || ENV['PORT'] || stored_port || '3000'
+end
+PIDFILE = 'tmp/pids/devd.pid'
+PORTFILE = 'tmp/pids/devd.port'
+LOGFILE = 'log/dev-server.log'
+
+def pid
+  File.read(PIDFILE).to_i
+rescue Errno::ENOENT
+  nil
+end
+
+def alive?(process_pid)
+  Process.kill(0, process_pid)
+  true
+rescue Errno::ESRCH, Errno::EPERM
+  false
+end
+
+def running?
+  pid && alive?(pid)
+end
+
+def port_open?
+  TCPSocket.new('127.0.0.1', dev_port).close
+  true
+rescue Errno::ECONNREFUSED
+  false
+end
+
+def wait_for_port(seconds)
+  (seconds * 2).times do
+    return true if port_open?
+
+    sleep 0.5
+  end
+  false
+end
+
+def start_server
+  abort "already running (pid #{ pid })" if running?
+  spawned = Process.spawn('./bin/dev', out: [LOGFILE, 'a'], err: [:child, :out], pgroup: true)
+  File.write(PIDFILE, spawned)
+  File.write(PORTFILE, start_port)
+  Process.detach(spawned)
+  if wait_for_port(15)
+    puts "comrade dev server on port #{ start_port } (pid #{ spawned }, log #{ LOGFILE })"
+  else
+    puts "server did not come up on port #{ start_port } — last log lines:"
+    system('tail', '-n', '20', LOGFILE)
+    exit 1
+  end
+end
+
+def stop_server
+  current = pid
+  abort 'not running' unless running?
+
+  Process.kill('TERM', current)
+  20.times do
+    break unless alive?(current)
+
+    sleep 0.25
+  end
+  Process.kill('KILL', current) if alive?(current)
+  File.delete(PIDFILE)
+  puts "stopped (pid #{ current })"
+end
+
+case ARGV.first
+when 'start'
+  start_server
+when 'stop'
+  stop_server
+when 'restart'
+  stop_server if running?
+  start_server
+when 'status'
+  if running?
+    state = port_open? ? 'answering' : 'booting'
+    puts "running (pid #{ pid }, port #{ dev_port }, #{ state })"
+  else
+    puts 'stopped'
+  end
+when 'logs'
+  abort "no log at #{ LOGFILE } — never started?" unless File.exist?(LOGFILE)
+
+  exec 'tail', '-n', '50', '-f', LOGFILE
+else
+  # Foreground passthrough — flags and bare invocation go to rails server.
+  ENV['PORT'] = ENV['COMRADE_PORT'] if ENV['COMRADE_PORT']
+  exec './bin/rails', 'server', *ARGV
+end

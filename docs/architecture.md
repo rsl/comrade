@@ -47,10 +47,15 @@ Five runtime environment variables, nothing else:
 - `TAVILY_API_KEY` — page extraction
 - `SEARXNG_URL` — search
 
-Plus one dev-only convenience: `COMRADE_PORT` — the port `bin/dev` serves
-on (maps to `PORT` before exec; unset, `PORT`, then Rails' 3000 apply).
-It exists so a fleet of apps can each own a named port variable without
-contesting the generic one; production never reads it.
+Plus two dev-only conveniences, both env-driven and unread in production:
+
+- `COMRADE_PORT` — the port `bin/dev` serves on (maps to `PORT` before
+  exec; unset, `PORT`, then Rails' 3000 apply). Exists so a fleet of apps
+  can each own a named port variable without contesting the generic one.
+- `COMRADE_HOST` — a named dev host (e.g. `comrade.local`), safelisted in
+  the development config so HostAuthorization accepts it. Named hosts
+  isolate cookies between the fleet's apps, which all share the localhost
+  jar; point the name at 127.0.0.1 in /etc/hosts.
 
 Nothing in the code knows a provider's name. The model endpoint is
 interchangeable by construction.

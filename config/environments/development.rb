@@ -3,6 +3,12 @@ require 'active_support/core_ext/integer/time'
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
 
+  # Named dev host (comrade.local etc.) for cookie isolation between the
+  # fleet's apps — set COMRADE_HOST in the environment and add the name to
+  # /etc/hosts pointing at 127.0.0.1. Unset, localhost and IP access work
+  # as Rails defaults.
+  config.hosts << ENV['COMRADE_HOST'] if ENV['COMRADE_HOST'].present?
+
   # Make code changes take effect immediately without server restart.
   config.enable_reloading = true
 
