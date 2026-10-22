@@ -6,7 +6,7 @@
   <div
     id="transcript"
     data-stream-reader-target="transcript"
-    class="mx-auto flex max-w-2xl flex-col gap-6 px-5 py-10"
+    class="mx-auto flex max-w-3xl flex-col gap-6 px-5 py-10"
   >
     <% messages.each do |message| %>
       <%= message_turn(message) %>
@@ -18,7 +18,7 @@
       data-turbo="false"
       data-stream-reader-target="form"
       data-action="submit->stream-reader#submit"
-      class="mx-auto flex max-w-2xl items-end gap-3 px-5"
+      class="mx-auto flex max-w-3xl items-end gap-3 px-5"
     >
       <textarea
         name="content"
