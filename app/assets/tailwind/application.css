@@ -1,1 +1,19 @@
 @import "tailwindcss";
+
+/* Comrade palette: red-black ground, poster-red structure, gold jewelry.
+   Body text stays neutral — the ideology lives in the frame. */
+@theme {
+  /* Grounds are the soviet red sunk into near-black (~8% and ~14% of
+     #cc0000 over black), so every surface hums the same hue. */
+  --color-ground: #170505;
+  --color-ground-raised: #230a0a;
+  /* The ground lifted ~10% toward white — for hairline dividers that sit
+     in the background family instead of drawing attention. */
+  --color-ground-bright: color-mix(in oklab, var(--color-ground) 90%, white);
+  --color-soviet: #cc0000;
+  --color-gold: #c9a227;
+  /* Cream tuned to sit beside the gold — same warmth, much lighter.
+     Focus lifts the composer one step brighter. */
+  --color-cream: #cab992;
+  --color-cream-bright: #f3e9cf;
+}

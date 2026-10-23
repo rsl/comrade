@@ -20,10 +20,18 @@ class ConversationsController < ApplicationController
     @conversation = Conversation.find(params[:id])
   end
 
-  # Archive/unarchive redirect back to where the action came from.
+  # Archive: remove the sidebar row in place so edit mode survives
+  # multi-archive. If the archived conversation is the one on screen (or the
+  # client doesn't speak Turbo Stream), fall back to a redirect.
   def archive
-    Conversation.find(params[:id]).archive
-    redirect_back_or_to root_path
+    conversation = Conversation.find(params[:id])
+    conversation.archive
+    viewing_it = request.referer && URI.parse(request.referer).path == conversation_path(conversation)
+    if request.format.turbo_stream? && !viewing_it
+      render turbo_stream: turbo_stream.remove(conversation)
+    else
+      redirect_back_or_to root_path
+    end
   end
 
   def unarchive

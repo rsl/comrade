@@ -22,21 +22,59 @@
     <%= javascript_importmap_tags %>
   </head>
 
-  <body class="bg-neutral-950 text-neutral-200 antialiased">
-    <header class="mx-auto max-w-3xl px-5 pt-16">
-      <h1 class="text-3xl font-semibold tracking-tight text-neutral-100">
-        <%= link_to 'Comrade', root_path %>
-      </h1>
-      <p class="mt-1 text-sm text-neutral-500">Seize the means of information retrieval.</p>
-      <div class="fixed top-4 right-4 flex items-center gap-2 text-sm text-neutral-500">
-        <%= link_to '+ New', root_path, class: 'rounded border border-neutral-700 px-2 py-0.5 hover:text-neutral-200' %>
-        <span data-controller="font-sizer" class="flex items-center gap-2">
-        <button data-action="font-sizer#smaller" class="rounded border border-neutral-700 px-2 py-0.5 hover:text-neutral-200" aria-label="Smaller text">A−</button>
-        <button data-action="font-sizer#larger" class="rounded border border-neutral-700 px-2 py-0.5 hover:text-neutral-200" aria-label="Larger text">A+</button>
-        </span>
-      </div>
-    </header>
+  <%# Layout, desktop mock: one persistent right sidebar carrying all nav
+      — wordmark, new chat, recents, archive, font controls. No top chrome.
+      Phone arrangement comes after the palette is settled. %>
+  <body class="bg-ground text-neutral-200 antialiased">
+    <div class="flex min-h-screen flex-row-reverse">
+      <aside class="sticky top-0 flex h-screen w-60 shrink-0 flex-col bg-ground-raised px-4 py-5">
+        <div class="mb-2 flex items-center justify-between">
+          <%= link_to 'Comrade', root_path, class: 'text-lg font-semibold tracking-tight text-gold' %>
+          <%= link_to '+ New', root_path, title: 'New conversation',
+                class: 'rounded bg-soviet/20 px-2 py-0.5 text-xs text-neutral-400 hover:text-neutral-100 hover:bg-soviet/50' %>
+        </div>
 
-    <%= yield %>
+        <%# Recents carry iOS-style list management: "Edit" flips the list into
+        archive mode — rows grow a minus control. Archiving removes the row in
+        place via Turbo Stream, so edit mode survives multi-archive; only
+        archiving the conversation you're viewing falls back to a redirect. %>
+        <section data-controller="sidebar-edit" class="mt-4">
+          <div class="mb-2 flex items-baseline justify-between">
+            <h2 class="text-xs font-medium uppercase tracking-wide text-neutral-500">Recent Conversations</h2>
+            <button type="button" data-sidebar-edit-target="toggle" data-action="sidebar-edit#toggle"
+                  class="cursor-pointer text-xs text-neutral-500 hover:text-neutral-200">Edit</button>
+          </div>
+          <ul class="space-y-0.5">
+            <% Conversation.live.order(id: :desc).limit(20).each do |conversation| %>
+              <li class="flex items-center gap-1" id="<%= dom_id(conversation) %>">
+                <%= link_to conversation.title.presence || '(untitled)', conversation_path(conversation),
+                      class: "grow truncate text-sm leading-snug before:mr-2 before:text-gold before:content-['•'] #{ request.path == conversation_path(conversation) ? 'text-neutral-100' : 'text-neutral-400 hover:text-neutral-200' }" %>
+                <%# No minus for the conversation you're in: archiving it would
+                    yank the page out from under you. Leave first, then archive. %>
+                <% if request.path != conversation_path(conversation) %>
+                  <%= link_to '−', archive_conversation_path(conversation), title: 'Archive',
+                        data: { turbo_method: :patch, sidebar_edit_target: 'archive' },
+                        class: 'hidden shrink-0 cursor-pointer rounded-full bg-soviet/20 px-1.5 text-sm leading-tight text-neutral-400 hover:bg-soviet/50 hover:text-neutral-100' %>
+                <% end %>
+              </li>
+            <% end %>
+          </ul>
+        </section>
+
+        <%= link_to 'Archived Conversations', archived_conversations_path,
+              class: 'mt-6 text-xs text-neutral-500 hover:text-gold' %>
+
+        <div class="mt-auto pt-3">
+          <span data-controller="font-sizer" class="flex items-center gap-2 text-sm text-neutral-500">
+            <button data-action="font-sizer#smaller" class="cursor-pointer rounded bg-soviet/20 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-200 hover:bg-soviet/50" aria-label="Smaller text">A−</button>
+            <button data-action="font-sizer#larger" class="cursor-pointer rounded bg-soviet/20 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-200 hover:bg-soviet/50" aria-label="Larger text">A+</button>
+          </span>
+        </div>
+      </aside>
+
+      <main class="min-w-0 flex-1">
+        <%= yield %>
+      </main>
+    </div>
   </body>
 </html>
