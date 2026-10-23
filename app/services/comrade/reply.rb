@@ -247,7 +247,15 @@ module Comrade
         ensure_success(response)
         response.read_body(&block)
       end
-    rescue Errno::ECONNREFUSED, SocketError, Net::OpenTimeout => error
+    rescue Errno::ECONNREFUSED,
+           SocketError,
+           Net::OpenTimeout,
+           Net::ReadTimeout,
+           Errno::ECONNRESET,
+           Errno::EPIPE,
+           EOFError => error
+      # ReadTimeout is the common one: a slow endpoint (cold model load,
+      # long prefill) stays silent past Net::HTTP's 60s read timeout.
       raise UpstreamError, "LLM endpoint unreachable: #{ error.message }"
     ensure
       http&.finish
