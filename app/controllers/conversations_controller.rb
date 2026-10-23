@@ -46,6 +46,18 @@ class ConversationsController < ApplicationController
     redirect_to archived_conversations_path
   end
 
+  # Creates the conversation (title derived from the first message) and
+  # streams the first reply: 201 with Location and X-Conversation-Id
+  # headers, body being the SSE reply stream — one roundtrip for the
+  # first exchange.
+  def create
+    conversation = Conversation.start!(content: params.require(:content))
+    response.status = :created
+    response.headers['Location'] = conversation_url(conversation)
+    response.headers['X-Conversation-Id'] = conversation.id.to_s
+    stream_reply(conversation)
+  end
+
   private
 
   # In-place Turbo Stream removal only when the client speaks Turbo Stream
@@ -57,17 +69,5 @@ class ConversationsController < ApplicationController
 
   def viewing_conversation?(conversation)
     request.referer && URI.parse(request.referer).path == conversation_path(conversation)
-  end
-
-  # Creates the conversation (title derived from the first message) and
-  # streams the first reply: 201 with Location and X-Conversation-Id
-  # headers, body being the SSE reply stream — one roundtrip for the
-  # first exchange.
-  def create
-    conversation = Conversation.start!(content: params.require(:content))
-    response.status = :created
-    response.headers['Location'] = conversation_url(conversation)
-    response.headers['X-Conversation-Id'] = conversation.id.to_s
-    stream_reply(conversation)
   end
 end
