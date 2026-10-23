@@ -7,6 +7,7 @@ class ApplicationController < ActionController::Base
 
   # A stale URL (conversation deleted, old tab) lands home instead of a 404.
   rescue_from ActiveRecord::RecordNotFound do
-    redirect_to root_path, alert: "That conversation is gone."
+    flash[:alert] = 'That conversation is gone.'
+    redirect_to root_path
   end
 end

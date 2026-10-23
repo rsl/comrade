@@ -26,8 +26,7 @@ class ConversationsController < ApplicationController
   def archive
     conversation = Conversation.find(params[:id])
     conversation.archive
-    viewing_it = request.referer && URI.parse(request.referer).path == conversation_path(conversation)
-    if request.format.turbo_stream? && !viewing_it
+    if remove_row_in_place?(conversation)
       render turbo_stream: turbo_stream.remove(conversation)
     else
       redirect_back_or_to root_path
@@ -45,6 +44,19 @@ class ConversationsController < ApplicationController
     conversation = Conversation.archived.find(params[:id])
     conversation.destroy!
     redirect_to archived_conversations_path
+  end
+
+  private
+
+  # In-place Turbo Stream removal only when the client speaks Turbo Stream
+  # and isn't viewing the archived conversation itself — archiving the page
+  # under you needs the redirect home instead.
+  def remove_row_in_place?(conversation)
+    request.format.turbo_stream? && !viewing_conversation?(conversation)
+  end
+
+  def viewing_conversation?(conversation)
+    request.referer && URI.parse(request.referer).path == conversation_path(conversation)
   end
 
   # Creates the conversation (title derived from the first message) and

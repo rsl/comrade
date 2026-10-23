@@ -325,8 +325,35 @@ When a task needs scratch files - debugging dumps, generated output, temp data -
 
 # Quality checks
 
-The gates are rubocop, reek, and herb. Lefthook runs all three on
-staged files at every commit; before saying a task is done, run them
-across the repo, not just staged files. Report grouped by tool —
-autocorrectable vs manual — and act only when asked: the check is a
-report, not a mandate.
+The gates are rubocop, reek, and herb, run full-repo via `bin/quality`.
+Lefthook runs all three on staged files at every commit; before saying
+a task is done, run `bin/quality` across the repo. The check is a
+report, not a mandate — we want code we are happy with, not just code
+that passes generic quality checks.
+
+# Quality review (interactive)
+
+When addressing gate findings, do not assume the fix. Report totals
+grouped by tool — autocorrectable vs manual — and work the findings
+with rsl, one group at a time:
+
+- Propose a working order and wait for agreement: safe
+  autocorrectables; unsafe autocorrectables in small reviewed groups;
+  judgment calls (naming, config); metrics refactors — real design
+  decisions, one method at a time. Offer offense-by-offense instead of
+  batches if rsl prefers; ask.
+- For each group: show the site(s) and a concrete before/after, then
+  discuss — rsl may refactor, suggest alternatives, or put it in the
+  "won't fix" bucket. Apply only on explicit approval; re-run the
+  check on the affected files and confirm the offense cleared.
+- Refactors that clear one offense often introduce new ones
+  (complexity shifts shape; reek flags the new shape). Each new
+  finding is a new group — stop and report it before fixing.
+- Behavior changes are called out explicitly, never smuggled into a
+  "stylistic" fix.
+- Tuning cops in `.rubocop.yml` is a config decision, not a fix —
+  bring it to rsl first.
+- Dead code: confirm zero callers before proposing deletion; deletion
+  still needs approval.
+- Keep a running "won't fix" bucket and surface it at the end for a
+  final decision (inline disable vs config change vs leave as-is).

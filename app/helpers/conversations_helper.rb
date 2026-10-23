@@ -11,8 +11,39 @@ module ConversationsHelper
     render 'message', message:, tool_notes:
   end
 
-  def recent_conversations(conversations)
-    render 'recent', conversations:
+  # One transcript turn: a message plus the tool chips that answer into
+  # it. Consecutive tool rows group into the following non-tool message; a
+  # tool_calls frame with no spoken content renders nothing and must not
+  # flush the chips pending for the answering turn. Tools trailing with no
+  # answer become their own bare turns (the partial's stray-row branch
+  # renders them).
+  # rubocop:disable-next Metrics/MethodLength — one coherent scan; splitting
+  # it would hide the grouping shape behind indirection.
+  # :reek:TooManyStatements — the grouping walk is one coherent scan.
+  def grouped_turns(messages)
+    turns = []
+    pending = []
+    messages.each do |message|
+      if message.role == 'tool'
+        pending << message
+      elsif message.role == 'assistant' && message.tool_payload.present? && message.content.blank?
+        # Nothing spoken: render nothing, keep chips pending.
+      else
+        turns << [message, pending]
+        pending = []
+      end
+    end
+    pending.each { |tool| turns << [tool, []] }
+    turns
+  end
+
+  # The quiet chip text for a tool row: what comrade did, in prose.
+  def tool_note(tool)
+    if tool.tool_name == 'web_search'
+      "searched for #{ tool.tool_payload['arguments']['query'] }"
+    else
+      "fetched #{ tool.tool_payload['arguments']['url'] }"
+    end
   end
 
   # Answer paragraphs with per-paragraph source chips. Inline [n] markers

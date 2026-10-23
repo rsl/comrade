@@ -1,19 +1,4 @@
 pre-commit:
   commands:
-    rubocop:
-      glob: "*.rb"
-      run: bundle exec rubocop --force-exclusion {staged_files}
-    reek:
-      glob: "*.rb"
-      # reek's exclude_paths (db/ in .reek.yml) only filters its directory
-      # scan — explicitly passed files are always checked. Migrations are
-      # written once and frozen; smell heuristics don't apply. Glob is
-      # matched with the default gobwas matcher, where `**` does not match
-      # a bare direct child — hence both patterns.
-      exclude:
-        - "db/*"
-        - "db/**"
-      run: bundle exec reek {staged_files}
-    herb:
-      glob: "*.html.erb"
-      run: bundle exec herb lint {staged_files}
+    quality:
+      run: bin/quality
