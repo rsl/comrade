@@ -103,6 +103,9 @@ section are all legitimate contributions.
 
 Two conventions:
 
+- **Code style lives in** `.agents/skills/ruby-style` — preferences with
+  reasons, applied to code contributed here. The gates (rubocop, reek, herb)
+  run at commit.
 - **No CLA.** You keep your copyright; contributions are licensed to the
   project under AGPL-3.0, same as everything else. (A CLA — Contributor
   License Agreement — is the document some projects make you sign to hand
