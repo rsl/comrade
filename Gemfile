@@ -33,6 +33,9 @@ gem 'good_job'
 # Tailwind CSS via a Rust binary — no Node [https://github.com/rails/tailwindcss-rails]
 gem 'tailwindcss-rails'
 
+# Markdown rendering for assistant answers (cited_paragraphs).
+gem 'commonmarker'
+
 # Reduces boot times through caching; required in config/boot.rb
 gem 'bootsnap', require: false
 

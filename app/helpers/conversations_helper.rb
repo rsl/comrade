@@ -7,8 +7,8 @@ module ConversationsHelper
     render 'chat', endpoint:, fresh:, conversation:, messages:
   end
 
-  def message_turn(message)
-    render 'message', message:
+  def message_turn(message, tool_notes: [])
+    render 'message', message:, tool_notes:
   end
 
   def recent_conversations(conversations)
@@ -19,19 +19,27 @@ module ConversationsHelper
   # never render: combined with the model's "Sources:" footer they are the
   # paragraph→source signal, consumed and stripped. A paragraph with no
   # resolvable markers renders bare; the footer itself never renders.
+  # Paragraph text is markdown — the model writes markdown — rendered by
+  # commonmarker. Raw HTML in the source is escaped by default (no :unsafe),
+  # so model output can only produce markdown constructs, never live markup.
   def cited_paragraphs(message)
     citations = message.citations || []
     body, marker_urls = footer_map(message.content)
-    # html_safe is sound: the paragraph text ran through h() and the only
-    # additions are source_chips' own anchor markup.
     paragraphs = body.split(/\n\n+/).map do |paragraph|
-      plain, urls = paragraph_sources(paragraph, citations, marker_urls)
-      # rubocop:disable Rails/OutputSafety
-      content_tag(:p, h(sans_sup_tags(plain)).html_safe, class: 'mb-3 last:mb-0') +
-        content_tag(:div, source_chips(urls), class: 'mt-1 mb-4 text-xs text-neutral-500')
-      # rubocop:enable Rails/OutputSafety
+      render_answer_paragraph(paragraph, citations, marker_urls)
     end
     safe_join(paragraphs)
+  end
+
+  # One answer paragraph: source chips resolved from its [n] markers,
+  # text markdown-rendered beneath them.
+  def render_answer_paragraph(paragraph, citations, marker_urls)
+    plain, urls = paragraph_sources(paragraph, citations, marker_urls)
+    block = Commonmarker.to_html(sans_marker_ranges(sans_sup_tags(plain))).strip
+    chips = content_tag(:div, source_chips(urls), class: 'mt-1 mb-4 text-xs text-neutral-500') if urls.any?
+    # rubocop:disable Rails/OutputSafety
+    content_tag(:div, block.html_safe, class: 'mb-3 last:mb-0') + chips
+    # rubocop:enable Rails/OutputSafety
   end
 
   # Strips [n] markers from a paragraph and collects the source hashes
@@ -51,7 +59,7 @@ module ConversationsHelper
       end
       ''
     end
-    [sans_sup_tags(plain), sources.uniq { |source| source['url'] }]
+    [sans_marker_ranges(sans_sup_tags(plain)), sources.uniq { |source| source['url'] }]
   end
 
   # Inline source chips: title-only links, quiet, one per source.
@@ -72,6 +80,13 @@ module ConversationsHelper
   # its own text; it renders as escaped noise, so it goes.
   def sans_sup_tags(text)
     text.gsub(%r{</?sup[^>]*>}, '')
+  end
+
+  # Range-shaped citation markers ("[1–5]", "[1]–[3]") resolve to no
+  # single source, so they'd survive the [n] strip as literal text.
+  # Mirrors sansRangeMarkers in stream_reader_controller.js.
+  def sans_marker_ranges(text)
+    text.gsub(/\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\[\d+\s*[–—-]\s*\d+\]/, '')
   end
 
   # Splits the model's trailing "Sources:" footer off the answer and

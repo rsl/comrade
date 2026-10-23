@@ -1,5 +1,6 @@
 import { Controller } from "@hotwired/stimulus"
 import { Turbo } from "@hotwired/turbo-rails"
+import { marked } from "marked"
 
 // Streams an SSE reply into the transcript from a plain fetch: events are
 // JSON objects on `data:` lines ({type: "delta"|"tool"|"citations"}),
@@ -22,12 +23,80 @@ export default class extends Controller {
   // switch and the visit to the show page on completion.
   conversationUrl = null
 
-  // Cmd+Enter / Ctrl+Enter sends; plain Enter stays a newline.
+  // A tool event closes the current text run: the next pass opens a fresh
+  // div below the chips. Set in appendExchange, replaced on each tool.
+  contentEl = null
+  // Auto-scroll follows the stream only while the reader is pinned to the
+  // bottom; scrolling up pauses it and raises the "latest" chip.
+  autoScroll = true
+
+  connect() {
+    this.onScroll = () => this.updateAutoScroll()
+    window.addEventListener("scroll", this.onScroll)
+    // The Ask button reads "…" while a stream runs, back to "Ask" the
+    // moment there's a draft to send — submitting then steers.
+    this.askButton = this.formTarget.querySelector('button[type="submit"]')
+    this.formTarget.elements.content.addEventListener("input", () => this.syncAskButton())
+    this.element.insertAdjacentHTML("beforeend",
+      '<button type="button" data-action="stream-reader#jumpToLatest" class="jump-latest fixed bottom-28 right-64 z-20 hidden cursor-pointer rounded-full bg-soviet/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-soviet/60">↓ latest</button>')
+  }
+
+  disconnect() {
+    window.removeEventListener("scroll", this.onScroll)
+    this.element.querySelector(".jump-latest")?.remove()
+  }
+
+  updateAutoScroll() {
+    const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80
+    this.autoScroll = nearBottom
+    this.element.querySelector(".jump-latest")?.classList.toggle("hidden", nearBottom)
+  }
+
+  // Chip click (or scrolling home manually) re-pins the reader.
+  jumpToLatest() {
+    this.autoScroll = true
+    window.scrollTo({ top: document.documentElement.scrollHeight })
+    this.element.querySelector(".jump-latest")?.classList.add("hidden")
+  }
+
+  // Cmd+Enter / Ctrl+Enter sends; plain Enter stays a newline. ArrowUp
+  // with the caret at the start recalls sent messages, shell-style;
+  // ArrowDown walks back forward, ending on the preserved draft.
   keydown(event) {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault()
       event.target.form.requestSubmit()
+    } else if (event.key === "ArrowUp" && !event.shiftKey &&
+               event.target.selectionStart === 0 && event.target.selectionEnd === 0) {
+      this.recall(-1, event)
+    } else if (event.key === "ArrowDown" && !event.shiftKey && this.historyIndex !== null) {
+      this.recall(1, event)
     }
+  }
+
+  recall(direction, event) {
+    const input = event.target
+    if (direction === -1) {
+      if (!this.sentHistory.length) return
+      if (this.historyIndex === null) {
+        this.draft = input.value
+        this.historyIndex = this.sentHistory.length - 1
+      } else if (this.historyIndex > 0) {
+        this.historyIndex -= 1
+      } else { return }
+    } else {
+      this.historyIndex += 1
+      if (this.historyIndex >= this.sentHistory.length) {
+        this.historyIndex = null
+        input.value = this.draft ?? ""
+        input.setSelectionRange(input.value.length, input.value.length)
+        event.preventDefault()
+        return
+      }
+    }
+    event.preventDefault()
+    input.value = this.sentHistory[this.historyIndex]
+    input.setSelectionRange(input.value.length, input.value.length)
   }
 
   async submit(event) {
@@ -37,9 +106,19 @@ export default class extends Controller {
     if (!content) return
 
     input.value = ""
+    this.syncAskButton()
     this.clearRetries()
     const interrupted = this.partial
-    if (this.currentRequest) this.currentRequest.abort()
+    // Steering: finalize the interrupted answer with what arrived — its
+    // citation pass runs now, before the new stream resets the shared
+    // stream state — then abort the request.
+    if (this.currentRequest && this.partial) {
+      this.finishStream(this.liveAnswer)
+      this.currentRequest.abort()
+    } else if (this.currentRequest) {
+      this.clearLiveDots()
+      this.currentRequest.abort()
+    }
 
     const answer = this.appendExchange(content)
     await this.stream(content, interrupted, answer, { retry: false })
@@ -50,7 +129,10 @@ export default class extends Controller {
   async stream(content, interrupted, answer, { retry }) {
     this.partial = ""
     this.pendingCitations = null
-    this.currentRequest = new AbortController()
+    const request = this.currentRequest = new AbortController()
+    this.liveAnswer = answer
+    this.showLiveDot(answer)
+    this.syncAskButton()
 
     let response
     try {
@@ -86,6 +168,9 @@ export default class extends Controller {
       // stays on the page and in the transcript via the next request.
       if (error.name !== "AbortError") this.showRetry(content, interrupted, answer)
       return
+    } finally {
+      if (this.currentRequest === request) this.currentRequest = null
+      this.syncAskButton()
     }
     // Only the index page visits on completion: the first exchange (or,
     // when steered, the exchange that carries the interruption) ends with
@@ -99,7 +184,7 @@ export default class extends Controller {
   // the retry request skips user persistence and carries whatever partial
   // answer had streamed as interruption context.
   showRetry(content, interrupted, answer) {
-    this.clearThinking()
+    this.clearLiveDots()
     this.failed = { content, interrupted }
 
     const line = document.createElement("p")
@@ -115,6 +200,7 @@ export default class extends Controller {
     })
     line.append(link)
     answer.append(line)
+    this.syncAskButton()
   }
 
   clearRetries() {
@@ -130,30 +216,60 @@ export default class extends Controller {
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
     const turns = this.transcriptTarget.querySelectorAll("article")
     const answer = turns[turns.length - 1]
-    this.showThinking(answer)
 
     await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null })
   }
 
   appendExchange(content) {
-    this.clearThinking()
+    this.clearLiveDots()
+    // First exchange: the centered landing gives way to a top-aligned
+    // transcript, deliberately at the moment you act — and the greeting
+    // goes with your message, not with the reply.
+    this.transcriptTarget.classList.remove("justify-center")
+    this.transcriptTarget.querySelector(".greeting")?.remove()
+    // You just sent: the reply deserves an audience. Re-pin the reader.
+    this.autoScroll = true
+    this.element.querySelector(".jump-latest")?.classList.add("hidden")
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("user", content))
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
     const turns = this.transcriptTarget.querySelectorAll("article")
     const answer = turns[turns.length - 1]
-    this.showThinking(answer)
+    // Streamed text renders in final color from the start — no
+    // provisional faint pass.
+    this.contentEl = answer.querySelector("div")
+    this.showLiveDot(answer)
     return answer
   }
 
-  // The waiting state: a pulsing "thinking…" line inside the assistant
-  // turn, gone the moment real content lands. Tool chips replace it while
-  // a tool runs, and it returns while the model works after a tool.
-  showThinking(answer) {
-    answer.insertAdjacentHTML("beforeend", '<p class="thinking text-xs text-neutral-500 mt-1">thinking…</p>')
+  // The liveness device: a pulsing red dot inline in the COMRADE label —
+  // no node added or removed in the flow, so nothing shifts. Up at stream
+  // start, gone at [DONE], failure, or steering.
+  showLiveDot(answer) {
+    const label = answer.querySelector("p")
+    if (!label.querySelector(".live-dot")) {
+      label.insertAdjacentHTML("beforeend",
+        '<span class="live-dot ml-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-soviet"></span>')
+    }
   }
 
-  clearThinking() {
-    this.element.querySelectorAll(".thinking").forEach((el) => el.remove())
+  clearLiveDots() {
+    this.element.querySelectorAll(".live-dot").forEach((el) => { el.remove() })
+  }
+
+  // "…" while a stream runs, "Ask" the moment there's a draft typed — a
+  // mid-stream submit steers. Fixed width so the swap can't resize the
+  // composer unit.
+  syncAskButton() {
+    const input = this.formTarget.elements.content
+    const busy = this.currentRequest && !input.value.trim()
+    this.askButton.textContent = busy ? "…" : "Ask"
+  }
+
+  // End-of-stream pass for a steered-away answer: same formatting the
+  // [DONE] path would run, on whatever text arrived.
+  finishStream(answer) {
+    this.clearLiveDots()
+    this.renderCitations(answer)
   }
 
   turnHtml(role, content) {
@@ -181,7 +297,7 @@ export default class extends Controller {
       for (const event of events) {
         const data = event.replace(/^data: /, "")
         if (data === "[DONE]") {
-          this.clearThinking()
+          this.clearLiveDots()
           this.renderCitations(answer)
           return
         }
@@ -194,13 +310,28 @@ export default class extends Controller {
   // Returns true when the event carried citations.
   applyEvent(answer, event) {
     if (event.type === "delta") {
-      this.clearThinking()
-      answer.querySelector("div").textContent += event.text
+      // Text is final-color from the first delta; the live dot in the
+      // label is the only "still working" signal.
+      this.contentEl.textContent += event.text
       this.partial += event.text
     } else if (event.type === "tool") {
-      this.clearThinking()
-      answer.insertAdjacentHTML("beforeend", this.toolChip(event))
-      this.showThinking(answer)
+      // The finished run stops accumulating — the answer pass formats
+      // alone. The dot stays: the stream is still working.
+      this.partial = ""
+      // Chips collect into one group div (matching the server render):
+      // the group carries the outer spacing, chips are tight inside it.
+      let group = answer.querySelector(".chip-group")
+      if (!group) {
+        group = document.createElement("div")
+        group.className = "chip-group mt-2 mb-3"
+        this.contentEl.after(group)
+      }
+      const chip = document.createElement("template")
+      chip.innerHTML = this.toolChip(event).trim()
+      group.append(chip.content.firstChild)
+      this.contentEl = document.createElement("div")
+      this.contentEl.className = "whitespace-pre-wrap leading-relaxed"
+      group.after(this.contentEl)
     } else if (event.type === "citations") {
       this.pendingCitations = event.citations
       return event.citations.length > 0
@@ -208,15 +339,23 @@ export default class extends Controller {
     return false
   }
 
-  // End-of-stream formatting: paragraphs split on blank lines; inline [n]
-  // markers plus the model's "Sources:" footer are consumed as the
+  // End-of-stream formatting: paragraphs split on blank lines, each
+  // rendered as markdown (the model writes markdown); inline [n] markers
+  // plus the model's "Sources:" footer are consumed as the
   // paragraph→source signal and stripped — each paragraph renders with
   // quiet source chips under it, superscripts never appear. During the
   // stream the markers show as literal text (they can split across
-  // deltas), so the transformation waits for the whole answer.
+  // deltas), so the transformation waits for the whole answer. Text is
+  // escaped before parsing so the model's output can never carry live
+  // HTML through marked.
   renderCitations(answer) {
     const citations = this.pendingCitations || []
-    const content = answer.querySelector("div")
+    // The final pass's div — after tool rounds it's the last content div,
+    // not the first.
+    const content = this.contentEl
+    // Finalized: the raw-text pre-wrap goes — the markdown renderer's
+    // block tags carry spacing from here.
+    content.classList.remove("whitespace-pre-wrap")
     const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 
     const markerUrls = {}
@@ -231,7 +370,7 @@ export default class extends Controller {
 
     content.innerHTML = body.split(/\n\n+/).map((paragraph) => {
       const urls = []
-      const plain = this.sansSup(paragraph).replace(/\[(\d+)\]/g, (marker, n) => {
+      const plain = this.sansSup(this.sansRangeMarkers(paragraph)).replace(/\[(\d+)\]/g, (marker, n) => {
         const url = markerUrls[parseInt(n)]
         if (!url) return marker
         const citation = citations.find((c) => c.url === url)
@@ -239,7 +378,8 @@ export default class extends Controller {
         return ""
       })
       const chips = this.sourceChips(urls, escape)
-      return `<p>${escape(plain)}</p>${chips}`
+      const block = marked.parse(escape(plain), { breaks: true })
+      return `<div class="mb-3 last:mb-0">${block}</div>${chips}`
     }).join("")
     if (!citations.length) answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
     this.pendingCitations = null
@@ -251,6 +391,13 @@ export default class extends Controller {
     return text.replace(/<\/?sup[^>]*>/g, "")
   }
 
+  // Range-shaped citation markers ("[1–5]", "[1]–[3]") resolve to no
+  // single source, so they'd survive the [n] pass as literal text — the
+  // leak this strips. Misbehaving models can't bracket-bomb the page.
+  sansRangeMarkers(text) {
+    return text.replace(/\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\[\d+\s*[–—-]\s*\d+\]/g, "")
+  }
+
   sourceChips(sources, escape) {
     if (!sources.length) return ""
     const links = sources.map((s) =>
@@ -260,14 +407,16 @@ export default class extends Controller {
 
   toolChip(event) {
     const label = event.query ? `searched for ${event.query}` : `fetched ${event.url}`
-    return `<p class="mt-2 text-xs text-neutral-500">— ${label}</p>`
+    // Chip inside the group (see applyEvent): tight, the group div carries
+    // the spacing.
+    return `<p class="mb-1 text-xs text-neutral-500">— ${label}</p>`
   }
 
   get ownKnowledgeHtml() {
-    return '<div class="mt-3 border-t border-neutral-800 pt-2 text-xs text-neutral-500">from own knowledge</div>'
+    return '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">from model knowledge</div>'
   }
 
   scrollToBottom() {
-    window.scrollTo({ top: document.body.scrollHeight })
+    if (this.autoScroll) window.scrollTo({ top: document.documentElement.scrollHeight })
   }
 }
