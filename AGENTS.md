@@ -131,9 +131,9 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
 - **`main` changes only through pull requests** (branch rules enforce it —
   direct pushes are rejected). Branch from up-to-date `main` with the
   `rsl-` prefix; batch a working session's commits onto one branch and one
-  PR — granular commits, few pushes — and merge after rsl has seen it.
-  Agents never merge — merging is rsl's alone, even after approval of
-  everything else.
+  PR — granular commits, few pushes — and merge after the maintainer has
+  seen it. Agents never merge — merging is the maintainer's alone, even
+  after approval of everything else.
 - **Before the first edit of a task, state the plan** — files, order, what
   changes — and wait for a go-ahead.
 - **Read before edit.** The edit tool matches byte-for-byte; read the

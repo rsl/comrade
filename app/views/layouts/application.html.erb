@@ -1,80 +1,67 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <title><%= content_for(:title) || 'Comrade' %></title>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="Comrade">
-    <meta name="mobile-web-app-capable" content="yes">
+<%= tag.html lang: 'en' do %>
+  <%= tag.head do %>
+    <%= tag.title content_for(:title) || 'Comrade' %>
+    <%= tag.meta name: 'viewport', content: 'width=device-width,initial-scale=1' %>
+    <%= tag.meta name: 'apple-mobile-web-app-capable', content: 'yes' %>
+    <%= tag.meta name: 'application-name', content: 'Comrade' %>
+    <%= tag.meta name: 'mobile-web-app-capable', content: 'yes' %>
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
 
     <%= yield :head %>
 
-    <link rel="icon" href="/icon.png" type="image/png">
-    <link rel="icon" href="/icon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/icon.png">
+    <%= tag.link rel: 'icon', href: '/icon.png', type: 'image/png' %>
+    <%= tag.link rel: 'icon', href: '/icon.svg', type: 'image/svg+xml' %>
+    <%= tag.link rel: 'apple-touch-icon', href: '/icon.png' %>
 
-    <%# Restores the saved root font size before first paint (see
-        font_scale_boot.js and the font-sizer controller). %>
+    <%# Restores the saved root font size before first paint (see font_scale_boot.js and the font-sizer controller). %>
     <%= javascript_include_tag 'font_scale_boot' %>
     <%= stylesheet_link_tag :tailwind, "data-turbo-track": 'reload' %>
     <%= javascript_importmap_tags %>
-  </head>
+  <% end %>
 
-  <%# Layout, desktop mock: one persistent right sidebar carrying all nav
-      — wordmark, new chat, recents, archive, font controls. No top chrome.
-      Phone arrangement comes after the palette is settled. %>
-  <body class="bg-ground text-neutral-200 antialiased">
-    <div class="flex min-h-screen flex-row-reverse">
-      <aside class="sticky top-0 flex h-screen w-60 shrink-0 flex-col bg-ground-raised px-4 py-5">
-        <div class="mb-2 flex items-center justify-between">
+  <%# Layout, desktop mock: one persistent right sidebar carrying all nav — wordmark, new chat, recents, archive, font controls. No top chrome. Phone arrangement comes after the palette is settled. %>
+  <%= tag.body class: 'bg-ground text-neutral-200 antialiased' do %>
+    <%= tag.div class: 'flex min-h-screen flex-row-reverse' do %>
+      <%= tag.aside class: 'sticky top-0 flex h-screen w-60 shrink-0 flex-col bg-ground-raised px-4 py-5' do %>
+        <%= tag.div class: 'mb-2 flex items-center justify-between' do %>
           <%= link_to 'Comrade', root_path, class: 'text-lg font-semibold tracking-tight text-gold' %>
-          <%= link_to '+ New', root_path, title: 'New conversation',
-                class: 'rounded bg-soviet/20 px-2 py-0.5 text-xs text-neutral-400 hover:text-neutral-100 hover:bg-soviet/50' %>
-        </div>
+          <%= link_to '+ New', root_path, title: 'New conversation', class: 'rounded bg-soviet/20 px-2 py-0.5 text-xs text-neutral-400 hover:text-neutral-100 hover:bg-soviet/50' %>
+        <% end %>
 
-        <%# Recents carry iOS-style list management: "Edit" flips the list into
-        archive mode — rows grow a minus control. Archiving removes the row in
-        place via Turbo Stream, so edit mode survives multi-archive; only
-        archiving the conversation you're viewing falls back to a redirect. %>
-        <section data-controller="sidebar-edit" class="mt-4">
-          <div class="mb-2 flex items-baseline justify-between">
-            <h2 class="text-xs font-medium uppercase tracking-wide text-neutral-500">Recent Conversations</h2>
-            <button type="button" data-sidebar-edit-target="toggle" data-action="sidebar-edit#toggle"
-                  class="cursor-pointer text-xs text-neutral-500 hover:text-neutral-200">Edit</button>
-          </div>
-          <ul class="space-y-0.5">
+        <%# Recents carry iOS-style list management: "Edit" flips the list into archive mode — rows grow a minus control. Archiving removes the row in place via Turbo Stream, so edit mode survives multi-archive; only archiving the conversation you're viewing falls back to a redirect. %>
+        <%= tag.section 'data-controller': 'sidebar-edit', class: 'mt-4' do %>
+          <%= tag.div class: 'mb-2 flex items-baseline justify-between' do %>
+            <%= tag.h2 'Recent Conversations', class: 'text-xs font-medium uppercase tracking-wide text-neutral-500' %>
+            <%= tag.button 'Edit', type: 'button', data: { sidebar_edit_target: 'toggle', action: 'sidebar-edit#toggle' }, class: 'cursor-pointer text-xs text-neutral-500 hover:text-neutral-200' %>
+          <% end %>
+          <%= tag.ul class: 'space-y-0.5' do %>
             <% Conversation.live.order(id: :desc).limit(20).each do |conversation| %>
-              <li class="flex items-center gap-1" id="<%= dom_id(conversation) %>">
-                <%= link_to conversation.title.presence || '(untitled)', conversation_path(conversation),
-                      class: "grow truncate text-sm leading-snug before:mr-2 before:text-gold before:content-['•'] #{ request.path == conversation_path(conversation) ? 'text-neutral-100' : 'text-neutral-400 hover:text-neutral-200' }" %>
-                <%# No minus for the conversation you're in: archiving it would
-                    yank the page out from under you. Leave first, then archive. %>
+              <%= tag.li id: dom_id(conversation), class: 'flex items-center gap-1' do %>
+                <%= link_to conversation.title.presence || '(untitled)', conversation_path(conversation), class: "grow truncate text-sm leading-snug before:mr-2 before:text-gold before:content-['•'] #{ request.path == conversation_path(conversation) ? 'text-neutral-100' : 'text-neutral-400 hover:text-neutral-200' }" %>
+                <%# No minus for the conversation you're in: archiving it would yank the page out from under you. Leave first, then archive. %>
                 <% if request.path != conversation_path(conversation) %>
-                  <%= link_to '−', archive_conversation_path(conversation), title: 'Archive',
-                        data: { turbo_method: :patch, sidebar_edit_target: 'archive' },
-                        class: 'hidden shrink-0 cursor-pointer rounded-full bg-soviet/20 px-1.5 text-sm leading-tight text-neutral-400 hover:bg-soviet/50 hover:text-neutral-100' %>
+                  <%= link_to '−', archive_conversation_path(conversation), title: 'Archive', data: { turbo_method: :patch, sidebar_edit_target: 'archive' }, class: 'hidden shrink-0 cursor-pointer rounded-full bg-soviet/20 px-1.5 text-sm leading-tight text-neutral-400 hover:bg-soviet/50 hover:text-neutral-100' %>
                 <% end %>
-              </li>
+              <% end %>
             <% end %>
-          </ul>
-        </section>
+          <% end %>
+        <% end %>
 
-        <%= link_to 'Archived Conversations', archived_conversations_path,
-              class: 'mt-6 text-xs text-neutral-500 hover:text-gold' %>
+        <%= link_to 'Archived Conversations', archived_conversations_path, class: 'mt-6 text-xs text-neutral-500 hover:text-gold' %>
 
-        <div class="mt-auto pt-3">
-          <span data-controller="font-sizer" class="flex items-center gap-2 text-sm text-neutral-500">
-            <button data-action="font-sizer#smaller" class="cursor-pointer rounded bg-soviet/20 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-200 hover:bg-soviet/50" aria-label="Smaller text">A−</button>
-            <button data-action="font-sizer#larger" class="cursor-pointer rounded bg-soviet/20 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-200 hover:bg-soviet/50" aria-label="Larger text">A+</button>
-          </span>
-        </div>
-      </aside>
+        <%= tag.div class: 'mt-auto pt-3' do %>
+          <%= tag.span 'data-controller': 'font-sizer', class: 'flex items-center gap-2 text-sm text-neutral-500' do %>
+            <%= tag.button 'A−', 'data-action': 'font-sizer#smaller', 'aria-label': 'Smaller text', class: 'cursor-pointer rounded bg-soviet/20 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-200 hover:bg-soviet/50' %>
+            <%= tag.button 'A+', 'data-action': 'font-sizer#larger', 'aria-label': 'Larger text', class: 'cursor-pointer rounded bg-soviet/20 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-200 hover:bg-soviet/50' %>
+          <% end %>
+        <% end %>
+      <% end %>
 
-      <main class="min-w-0 flex-1">
+      <%= tag.main class: 'min-w-0 flex-1' do %>
         <%= yield %>
-      </main>
-    </div>
-  </body>
-</html>
+      <% end %>
+    <% end %>
+  <% end %>
+<% end %>
