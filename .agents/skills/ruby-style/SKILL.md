@@ -130,7 +130,7 @@ Never as arguments to `redirect_to` or `render`.
 Bad:
 
 ```ruby
-redirect_to thing_path(thing), flash: { success: 'Saved' }
+redirect_to thing_path(thing), alert: 'Saved'
 ```
 
 Good:
@@ -139,6 +139,28 @@ Good:
 flash[:success] = 'Saved'
 redirect_to thing_path(thing)
 ```
+
+# ERB views
+
+Never hand-write HTML tags with ERB-interpolated attributes — build
+elements with tag helpers (`tag.div ...`) and pass attributes as options.
+Control flow (`if`, `each`) stays in ERB; the tags themselves do not.
+
+Prefer long single lines; let the editor soft-wrap — never manually break
+a tag call across source lines. Compute non-trivial values (class lists,
+text) in a helper or local before the markup.
+
+Conditional classes use the `class_names` hash form
+(`'justify-center': messages.empty?`), not `if`-modifier array elements —
+herb's ERB parser can't parse the latter.
+
+Pass partial locals as bare keyword arguments, not a `locals:` hash.
+
+Herb disables are a last resort; the directive goes at the start of the
+line, before the code: `<%# herb:disable rule-name %><%= ... %>`.
+
+Exempt: the `DOCTYPE` line (no helper exists) and non-HTML templates
+(JSON manifest).
 
 # `self.` over `class << self`
 
