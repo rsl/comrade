@@ -64,8 +64,22 @@ def wait_for_port(seconds)
   false
 end
 
+def sweep_stray_watchers
+  # Watchers from unmanaged pasts (bare puma runs, crashed daemons) linger
+  # forever — sweep any comrade tailwindcss watcher before spawning ours.
+  list = `ps ax -o pid=,command= | grep 'tailwindcss -i #{ Dir.pwd }/app/assets/tailwind' | grep -v grep`
+  list.each_line do |line|
+    stray = line.strip.split(/\s+/).first.to_i
+    next if stray.zero? || stray == pid(TAILWIND_PIDFILE)
+
+    Process.kill('KILL', -Process.getpgid(stray)) rescue Process.kill('KILL', stray) rescue nil
+  end
+end
+
 def start_server
   abort "already running (pid #{ pid })" if running?
+
+  sweep_stray_watchers
 
   File.write(PORTFILE, start_port)
   # The watcher reads stdin (langafile's pattern) — feed it an endless
@@ -98,15 +112,21 @@ def stop_process(pidfile)
   current = pid(pidfile)
   return unless current && alive?(current)
 
-  Process.kill('TERM', current)
+  # Negative pid = the whole process group (we spawn with pgroup: true).
+  # TERM to the leader alone leaks the group's children — the sh/tail/
+  # tailwindcss chain — which is how stale watchers accumulated.
+  [current, -current].uniq.each { |target| Process.kill('TERM', target) rescue nil }
   20.times do
     break unless alive?(current)
 
     sleep 0.25
   end
-  Process.kill('KILL', current) if alive?(current)
+  Process.kill('KILL', -current) if alive?(current) rescue nil
   File.delete(pidfile)
   current
+rescue Errno::ESRCH
+  File.delete(pidfile) if pid(pidfile) == current
+  nil
 end
 
 def stop_server

@@ -24,7 +24,17 @@ citations. AGPL-3.0. Personal tool, built public-first.
   `bin/dev`, so production's Kamal-set `PORT` is untouchable by it.
   Dev binds 0.0.0.0 so fleet devices reach it; `comrade.local` is
   advertised over Bonjour via launchd (`com.rsl.comrade-mdns`) and
-  resolves locally via `/etc/hosts`.
+  resolves locally via `/etc/hosts`. Lifecycle is daemon-only:
+  start/stop/restart through `bin/dev` — killing puma directly orphans
+  the Tailwind watcher (stray watchers were the 2026-10-23 leak; bin/dev
+  now kills process groups on stop and sweeps strays on start, but the
+  habit is `bin/dev restart`, not kill).
+- Env inheritance is a snapshot at process launch: shells spawned by an
+  opencode session already carry `exports.zsh` vars — re-sourcing is
+  only needed when `exports.zsh` gained keys after the parent shell
+  launched, or the process starts from a non-login context. Verify with
+  `echo $VAR` / `ps eww <pid>` before assuming a silent "(no results)"
+  is an env problem (2026-10-23 correction of the 2026-10-22 note).
 - Dev host: `COMRADE_HOST` (comrade.local here) is safelisted in
   `config/environments/development.rb` — named hosts isolate cookies
   between the fleet's apps, which all share the localhost jar. Unset,
