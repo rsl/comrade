@@ -96,9 +96,8 @@ module Comrade
 
       def query
         # URI.encode_www_form handles escaping; keys are wire params.
-        # rubocop:disable Style/StringHashKeys
+        # rubocop:disable-next Style/StringHashKeys
         URI.encode_www_form('q' => @query, 'format' => 'json')
-        # rubocop:enable Style/StringHashKeys
       end
 
       def uri

@@ -51,12 +51,11 @@ module Comrade
 
       def headers
         # Header names are strings on the wire.
-        # rubocop:disable Style/StringHashKeys
+        # rubocop:disable-next Style/StringHashKeys
         {
           'Content-Type' => 'application/json',
           'Authorization' => "Bearer #{ api_key }",
         }
-        # rubocop:enable Style/StringHashKeys
       end
 
       def uri

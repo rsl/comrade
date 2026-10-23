@@ -278,11 +278,10 @@ module Comrade
     def headers
       # Header names are strings on the wire — the StringHashKeys cop is
       # guarding keyword-argument hashes, which this isn't.
-      # rubocop:disable Style/StringHashKeys
+      # rubocop:disable-next Style/StringHashKeys
       { 'Content-Type' => 'application/json' }.tap do |header|
         header['Authorization'] = "Bearer #{ ENV['COMRADE_LLM_API_KEY'] }" if ENV['COMRADE_LLM_API_KEY']
       end
-      # rubocop:enable Style/StringHashKeys
     end
 
     def payload(tool_definitions: DEFINITIONS, final_instruction: nil)

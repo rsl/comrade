@@ -68,9 +68,8 @@ module ConversationsHelper
     plain, urls = paragraph_sources(paragraph, citations, marker_urls)
     block = Commonmarker.to_html(sans_marker_ranges(sans_sup_tags(plain))).strip
     chips = content_tag(:div, source_chips(urls), class: 'mt-1 mb-4 text-xs text-neutral-500') if urls.any?
-    # rubocop:disable Rails/OutputSafety
+    # rubocop:disable-next Rails/OutputSafety
     content_tag(:div, block.html_safe, class: 'mb-3 last:mb-0') + chips
-    # rubocop:enable Rails/OutputSafety
   end
 
   # Strips [n] markers from a paragraph and collects the source hashes
@@ -83,10 +82,9 @@ module ConversationsHelper
       url = marker_urls[Regexp.last_match(1).to_i]
       if url
         # jsonb row data — string keys are the storage contract.
-        # rubocop:disable Style/StringHashKeys
         known = citations.detect { |citation| citation['url'] == url }
+        # rubocop:disable-next Style/StringHashKeys
         sources << (known || { 'url' => url, 'title' => URI.parse(url).host })
-        # rubocop:enable Style/StringHashKeys
       end
       ''
     end
