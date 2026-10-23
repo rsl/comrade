@@ -142,9 +142,11 @@ redirect_to thing_path(thing)
 
 # ERB views
 
-Never hand-write HTML tags with ERB-interpolated attributes — build
-elements with tag helpers (`tag.div ...`) and pass attributes as options.
-Control flow (`if`, `each`) stays in ERB; the tags themselves do not.
+Hand-write static markup as plain HTML: an element carrying no Ruby —
+`<html lang="en">`, `<head>`, static attributes — is clearer as HTML
+than as a tag-helper call. Reach for `tag.div` when Ruby enters the
+element: interpolated or conditional attributes, computed class lists,
+`dom_id`s. The rule governs where Ruby meets markup, not markup itself.
 
 Prefer long single lines; let the editor soft-wrap — never manually break
 a tag call across source lines. Compute non-trivial values (class lists,
@@ -159,8 +161,7 @@ Pass partial locals as bare keyword arguments, not a `locals:` hash.
 Herb disables are a last resort; the directive goes at the start of the
 line, before the code: `<%# herb:disable rule-name %><%= ... %>`.
 
-Exempt: the `DOCTYPE` line (no helper exists) and non-HTML templates
-(JSON manifest).
+Non-HTML templates (the JSON manifest) fall outside this section.
 
 # `self.` over `class << self`
 
