@@ -43,6 +43,11 @@ module StreamsReply
     Enumerator.new do |yielder|
       reply.each { |delta| yielder << "data: #{ delta.to_json }\n\n" }
       yielder << "data: [DONE]\n\n"
+    rescue Comrade::Reply::UpstreamError => error
+      # The status is already 200 and streaming, so the failure travels as
+      # an event; the reader renders it into the retry line.
+      yielder << "data: #{ { type: 'error', message: error.message }.to_json }\n\n"
+      yielder << "data: [DONE]\n\n"
     end
   end
 end

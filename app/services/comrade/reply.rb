@@ -4,8 +4,9 @@ module Comrade
   # The reply loop: persists the user message, streams the model's answer
   # from any OpenAI-compatible chat-completions endpoint, and persists the
   # assistant message on clean completion. Yields structured events —
-  # {type: 'delta'} text, {type: 'tool'} activity — the caller owns
-  # transport. When the model emits tool_calls, the loop pauses streaming,
+  # {type: 'delta'} text, {type: 'tool'} activity, {type: 'error'} upstream
+  # failure — the caller owns transport. When the model emits tool_calls, the
+  # loop pauses streaming,
   # executes the tools, persists the exchange, and resumes with the results
   # in context; the tool round trip is invisible to the wire except as
   # tool events between text.
@@ -15,9 +16,6 @@ module Comrade
   class Reply
     DEFAULT_PROMPT = Rails.root.join('config/comrade_prompt.md')
     CUSTOM_PROMPT = Rails.root.join('config/comrade_prompt.custom.md')
-
-    # The endpoint is unreachable or misconfigured.
-    class UnavailableError < StandardError; end
 
     MAX_TOOL_ROUNDS = 3
 
@@ -250,7 +248,7 @@ module Comrade
         response.read_body(&block)
       end
     rescue Errno::ECONNREFUSED, SocketError, Net::OpenTimeout => error
-      raise UnavailableError, "LLM endpoint unreachable: #{ error.message }"
+      raise UpstreamError, "LLM endpoint unreachable: #{ error.message }"
     ensure
       http&.finish
     end
@@ -264,7 +262,7 @@ module Comrade
     def ensure_success(response)
       return if response.is_a?(Net::HTTPSuccess)
 
-      raise UnavailableError, "LLM endpoint returned HTTP #{ response.code }"
+      raise UpstreamError, "LLM endpoint returned HTTP #{ response.code }"
     end
 
     def uri
@@ -272,7 +270,7 @@ module Comrade
     end
 
     def base_url
-      ENV.fetch('COMRADE_LLM_BASE_URL') { raise UnavailableError, 'COMRADE_LLM_BASE_URL is not set' }
+      ENV.fetch('COMRADE_LLM_BASE_URL') { raise UpstreamError, 'COMRADE_LLM_BASE_URL is not set' }
     end
 
     def headers
@@ -298,7 +296,7 @@ module Comrade
 
     def prompt
       path = CUSTOM_PROMPT.exist? ? CUSTOM_PROMPT : DEFAULT_PROMPT
-      raise UnavailableError, "System prompt missing at #{ path }" unless path.exist?
+      raise UpstreamError, "System prompt missing at #{ path }" unless path.exist?
 
       path.read
     end

@@ -3,7 +3,7 @@ import { Turbo } from "@hotwired/turbo-rails"
 import { marked } from "marked"
 
 // Streams an SSE reply into the transcript from a plain fetch: events are
-// JSON objects on `data:` lines ({type: "delta"|"tool"|"citations"}),
+// JSON objects on `data:` lines ({type: "delta"|"tool"|"citations"|"error"}),
 // `[DONE]` ends the stream. Tool events render as "searched for X" chips
 // ahead of the answer text. Sending while a reply streams aborts it —
 // "steering": the partial answer is persisted as context, and the new
@@ -133,6 +133,7 @@ export default class extends Controller {
     this.liveAnswer = answer
     this.showLiveDot(answer)
     this.syncAskButton()
+    let completed
 
     let response
     try {
@@ -162,7 +163,7 @@ export default class extends Controller {
     }
 
     try {
-      await this.readStream(response.body, answer)
+      completed = await this.readStream(response.body, answer, content, interrupted)
     } catch (error) {
       // A steered-away stream dies intentionally; its partial answer
       // stays on the page and in the transcript via the next request.
@@ -175,21 +176,23 @@ export default class extends Controller {
     // Only the index page visits on completion: the first exchange (or,
     // when steered, the exchange that carries the interruption) ends with
     // a Turbo visit to the conversation's permanent address. On a show
-    // page exchanges append in place.
-    if (this.freshValue) Turbo.visit(this.conversationUrl)
+    // page exchanges append in place. An upstream error ends the stream
+    // without completion, so it never visits.
+    if (completed && this.freshValue) Turbo.visit(this.conversationUrl)
   }
 
   // A failed turn offers a one-click resend. The retry is a steer: the
   // user message already exists server-side (it persists eagerly), so
   // the retry request skips user persistence and carries whatever partial
-  // answer had streamed as interruption context.
-  showRetry(content, interrupted, answer) {
+  // answer had streamed as interruption context. The reason, when the
+  // server sent one, names the upstream failure.
+  showRetry(content, interrupted, answer, reason) {
     this.clearLiveDots()
     this.failed = { content, interrupted }
 
     const line = document.createElement("p")
     line.className = "retry-line mt-2 text-xs text-red-400"
-    line.append("reply failed — ")
+    line.append(reason ? `reply failed — ${reason} — ` : "reply failed — ")
     const link = document.createElement("a")
     link.href = "#"
     link.textContent = "retry?"
@@ -280,7 +283,7 @@ export default class extends Controller {
     </article>`
   }
 
-  async readStream(body, answer) {
+  async readStream(body, answer, content, interrupted) {
     const reader = body.getReader()
     const decoder = new TextDecoder()
     let buffer = ""
@@ -299,9 +302,17 @@ export default class extends Controller {
         if (data === "[DONE]") {
           this.clearLiveDots()
           this.renderCitations(answer)
-          return
+          return true
         }
-        if (this.applyEvent(answer, JSON.parse(data))) sawCitations = true
+        const parsed = JSON.parse(data)
+        // Upstream failure (endpoint unreachable, misconfigured): the
+        // reason lands in the retry line; the [DONE] success path never
+        // runs, so no citation render and no Turbo visit.
+        if (parsed.type === "error") {
+          this.showRetry(content, interrupted, answer, parsed.message)
+          return false
+        }
+        if (this.applyEvent(answer, parsed)) sawCitations = true
         this.scrollToBottom()
       }
     }
