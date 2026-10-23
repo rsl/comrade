@@ -21,6 +21,12 @@ module Comrade
 
     MAX_TOOL_ROUNDS = 3
 
+    # The cap pass gets no tools; left to its own devices the model then
+    # emits its next search as fake tool-call text in the answer. This
+    # appended system line is the actual lever.
+    FINAL_ANSWER_DIRECTIVE = 'You have no tools for this reply. Write your final answer NOW, in words, ' \
+                             'from what the earlier searches gathered. Never write tool calls as text.'
+
     # Tool definitions in OpenAI's schema — the model names these in
     # tool_calls; the registry below maps names to implementations.
     DEFINITIONS = [
@@ -76,9 +82,6 @@ module Comrade
     def initialize(conversation:, content:)
       @conversation = conversation
       @content = content
-      # Sources are numbered across every tool call in the reply, matching
-      # the citation list the interface renders.
-      @next_citation_index = 0
     end
 
     # The user message is persisted eagerly (so validation errors surface
@@ -106,9 +109,11 @@ module Comrade
     end
 
     # Cap reached: one last pass with no tools on offer — the model must
-    # answer from what the rounds gathered instead of dead-ending.
+    # answer from what the rounds gathered instead of dead-ending. The
+    # appended system line is the actual lever: left to its own devices
+    # the model emits its next search as fake tool-call text in the answer.
     def final_answer(citations, yielder)
-      frame = stream_pass(yielder, tool_definitions: [])
+      frame = stream_pass(yielder, tool_definitions: [], final_instruction: FINAL_ANSWER_DIRECTIVE)
       persist_answer(frame[:content], citations, yielder)
     end
 
@@ -131,10 +136,10 @@ module Comrade
     # One streaming request/response pass. Text deltas flow out as events;
     # tool_call fragments accumulate until the stream ends, so the whole
     # frame lands complete. Returns { content:, tool_calls: } (indexed).
-    def stream_pass(yielder, tool_definitions: DEFINITIONS)
+    def stream_pass(yielder, tool_definitions: DEFINITIONS, final_instruction: nil)
       content = +''
       tool_calls = Hash.new { |hash, index| hash[index] = { id: nil, name: +'', arguments: +'' } }
-      each_frame(payload(tool_definitions: tool_definitions)) do |delta|
+      each_frame(payload(tool_definitions: tool_definitions, final_instruction: final_instruction)) do |delta|
         absorb_delta(delta, content, tool_calls, yielder)
       end
       { content: content, tool_calls: tool_calls }
@@ -185,22 +190,10 @@ module Comrade
 
     def dispatch_tool(name, arguments)
       case name
-      when 'web_search' then number_citations(arguments['query']) { search_results(arguments['query']) }
-      when 'fetch_page' then number_citations(arguments['url']) { fetch_content(arguments['url']) }
+      when 'web_search' then search_results(arguments['query'])
+      when 'fetch_page' then fetch_content(arguments['url'])
       else ["Unknown tool: #{ name }", []]
       end
-    end
-
-    # Sources are numbered at the tool layer — "[3] Title — url" — so the
-    # model's inline [n] markers match the citation list the interface
-    # renders. The counter runs across all tool calls in one reply.
-    def number_citations(label)
-      content, citations = yield
-      numbered = citations.each_with_index.map do |citation, offset|
-        "[#{ @next_citation_index + offset + 1 }] #{ citation[:title] } — #{ citation[:url] }"
-      end
-      @next_citation_index += citations.size
-      ["#{ label }:\n#{ content }\n\n#{ numbered.join("\n") }", citations]
     end
 
     def search_results(query)
@@ -213,7 +206,10 @@ module Comrade
 
     def fetch_content(url)
       content = Tools::FetchPage.call(url: url)
-      return ['(no content extracted)', []] if content.start_with?('Fetch ', 'No content')
+      if content.start_with?('Fetch ', 'No content')
+        failed = 'No content could be extracted from that page — do not retry it or similar URLs;'
+        return ["#{ failed } work from the search results or answer from what you have.", []]
+      end
 
       [content, [title: url, url: url]]
     end
@@ -289,12 +285,15 @@ module Comrade
       # rubocop:enable Style/StringHashKeys
     end
 
-    def payload(tool_definitions: DEFINITIONS)
+    def payload(tool_definitions: DEFINITIONS, final_instruction: nil)
+      messages = [role: 'system', content: prompt] + @conversation.to_transcript
+      messages << { role: 'system', content: final_instruction } if final_instruction
       {
         model: ENV.fetch('COMRADE_LLM_MODEL'),
-        messages: [role: 'system', content: prompt] + @conversation.to_transcript,
+        messages: messages,
         tools: tool_definitions,
         stream: true,
+        max_tokens: 8192,
       }
     end
 
