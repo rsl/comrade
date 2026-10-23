@@ -36,7 +36,21 @@ AllCops:
     - '**/*.ru'
     - '**/*.jbuilder'
   Exclude:
-    - bin/**/*
+    # Gate only the scripts this project writes. bin/quality is shell,
+    # outside rubocop's reach by nature; the rest of these are Rails
+    # scaffold binstubs, generated and never touched.
+    - bin/brakeman
+    - bin/bundler-audit
+    - bin/ci
+    - bin/docker-entrypoint
+    - bin/importmap
+    - bin/jobs
+    - bin/kamal
+    - bin/rails
+    - bin/rake
+    - bin/rubocop
+    - bin/setup
+    - bin/thrust
     - config/**/*
     - db/**/*
     - lib/tasks/**/*
