@@ -12,7 +12,7 @@ import { marked } from "marked"
 // names it, later exchanges post to its messages endpoint, and the first
 // completed stream visits the conversation's permanent address.
 export default class extends Controller {
-  static targets = ["form", "transcript"]
+  static targets = ["form", "transcript", "title"]
   static values = { endpoint: String, fresh: Boolean }
 
   // The in-flight request, abortable, and the partial answer text it has
@@ -31,8 +31,10 @@ export default class extends Controller {
   autoScroll = true
 
   connect() {
+    // The transcript panel is the scroll surface (app shell: the document
+    // never scrolls), so liveness tracking binds to it, not the window.
     this.onScroll = () => this.updateAutoScroll()
-    window.addEventListener("scroll", this.onScroll)
+    this.transcriptTarget.addEventListener("scroll", this.onScroll)
     // The Ask button reads "…" while a stream runs, back to "Ask" the
     // moment there's a draft to send — submitting then steers.
     this.askButton = this.formTarget.querySelector('button[type="submit"]')
@@ -42,12 +44,13 @@ export default class extends Controller {
   }
 
   disconnect() {
-    window.removeEventListener("scroll", this.onScroll)
+    this.transcriptTarget.removeEventListener("scroll", this.onScroll)
     this.element.querySelector(".jump-latest")?.remove()
   }
 
   updateAutoScroll() {
-    const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80
+    const panel = this.transcriptTarget
+    const nearBottom = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 80
     this.autoScroll = nearBottom
     this.element.querySelector(".jump-latest")?.classList.toggle("hidden", nearBottom)
   }
@@ -55,7 +58,7 @@ export default class extends Controller {
   // Chip click (or scrolling home manually) re-pins the reader.
   jumpToLatest() {
     this.autoScroll = true
-    window.scrollTo({ top: document.documentElement.scrollHeight })
+    this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight
     this.element.querySelector(".jump-latest")?.classList.add("hidden")
   }
 
@@ -235,6 +238,13 @@ export default class extends Controller {
     this.element.querySelector(".jump-latest")?.classList.add("hidden")
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("user", content))
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
+    // The reserved title row becomes the conversation's working title —
+    // the sent question, truncated exactly like Conversation.start! — so
+    // the row reads the same before and after the Turbo.visit swap.
+    if (this.hasTitleTarget) {
+      this.titleTarget.classList.remove("invisible")
+      this.titleTarget.querySelector("span").textContent = content.replace(/\s+/g, " ").slice(0, 50)
+    }
     const turns = this.transcriptTarget.querySelectorAll("article")
     const answer = turns[turns.length - 1]
     // Streamed text renders in final color from the start — no
@@ -434,6 +444,6 @@ export default class extends Controller {
   }
 
   scrollToBottom() {
-    if (this.autoScroll) window.scrollTo({ top: document.documentElement.scrollHeight })
+    if (this.autoScroll) this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight
   }
 }
