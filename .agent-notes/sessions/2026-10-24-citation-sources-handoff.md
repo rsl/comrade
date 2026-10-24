@@ -64,6 +64,33 @@ pick a question that forces search. (3) `run_tool_call` PERSISTS into
 the conversation it is given — probe on a throwaway conversation, and
 delete the probe rows after. All probe conversations were deleted.
 
+## UI session, same day: the fixed shell
+
+Separate work stream, same branch: iOS Safari viewport bugs turned into a
+layout rework. The measured numbers (iPad Safari 26, ?vvdebug probe),
+for whoever debugs viewport state next:
+
+- Landing, keyboard closed: `vv.height == innerHeight == shell == 875`.
+- Show page, keyboard open, pre-fix: `scrollY=69` — iOS scrolls the
+  window itself on focus even with nothing scrollable, never reverts it,
+  and drags `position: fixed` content out from under the chrome.
+  `vv.offsetTop=0` — it was never a visual-viewport pan.
+- Post-fix, show page, keyboard open: `vv.height=806`, `shell=806px`,
+  `scrollY=0` held by the pin, layout correct.
+- URL-bar states moved the "full" height too (875 expanded → 932
+  collapsed), which is why every `vh`-family unit lied in a different
+  state; Safari ships no `interactive-widget` (expected 27.1, Bram.us
+  2026-09-11), so the meta tag was inert on iOS all along.
+
+Architecture: `application.html.erb` is a fixed shell sized by
+`visualViewport.height` (visual_viewport_boot.js); the document never
+scrolls — the transcript panel scrolls internally, the composer is a
+shell footer, and the stream reader targets the panel for all scrolling
+(`scrollToBottom`, autoScroll pinning, jump-to-latest). The landing→show
+Turbo.visit swap stays invisible via the reserved title row + pixel
+identical renders; the row now fills with the sent question as the
+working title (truncated exactly like `Conversation.start!`).
+
 ## Open items → registry
 
 - Citations-shrink bug → SOLVED this session (see above); struck from
