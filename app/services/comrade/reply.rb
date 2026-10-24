@@ -80,13 +80,18 @@ module Comrade
     def initialize(conversation:, content:)
       @conversation = conversation
       @content = content
+      # The stream sink is attached when the enumerator starts.
+      @yielder = nil
     end
 
     # The user message is persisted eagerly (so validation errors surface
     # as 422 before any streaming starts); the assistant message persists
     # when the enumerator is fully consumed.
     def enumerator
-      Enumerator.new { |yielder| stream_into(yielder) }
+      Enumerator.new do |yielder|
+        @yielder = yielder
+        stream_into
+      end
     end
 
     def append_message(role:, content:, **fields)
@@ -95,35 +100,47 @@ module Comrade
 
     private
 
-    def stream_into(yielder)
+    def stream_into
       citations = []
       MAX_TOOL_ROUNDS.times do
-        frame = stream_pass(yielder)
-        return persist_answer(frame[:content], citations, yielder) if frame[:tool_calls].empty?
+        frame = stream_pass
+        return persist_answer(frame[:content], citations) if frame[:tool_calls].empty?
 
-        citations += run_tool_round(frame, yielder)
+        citations.concat(run_tool_round(frame, citations.size))
       end
-      final_answer(citations, yielder)
+      final_answer(citations)
     end
 
     # Cap reached: one last pass with no tools on offer — the model must
     # answer from what the rounds gathered instead of dead-ending. The
     # appended system line is the actual lever: left to its own devices
     # the model emits its next search as fake tool-call text in the answer.
-    def final_answer(citations, yielder)
-      frame = stream_pass(yielder, tool_definitions: [], final_instruction: FINAL_ANSWER_DIRECTIVE)
-      persist_answer(frame[:content], citations, yielder)
+    def final_answer(citations)
+      frame = stream_pass(tool_definitions: [], final_instruction: FINAL_ANSWER_DIRECTIVE)
+      persist_answer(frame[:content], citations)
     end
 
-    def run_tool_round(frame, yielder)
+    # The round starts numbering sources at offset and advances it by each
+    # result set the round yields — parallel searches and fetches in one
+    # frame number continuously.
+    def run_tool_round(frame, offset)
       tool_calls = frame[:tool_calls].values
       persist_tool_calls(frame[:content], tool_calls)
-      tool_calls.flat_map { |tool_call| run_tool_call(tool_call, yielder) }
+      run_numbered_tool_calls(tool_calls, offset)
     end
 
-    def run_tool_call(tool_call, yielder)
+    def run_numbered_tool_calls(tool_calls, offset)
+      number = offset
+      tool_calls.flat_map do |tool_call|
+        found = run_tool_call(tool_call, number)
+        number += found.size
+        found
+      end
+    end
+
+    def run_tool_call(tool_call, offset)
       arguments = JSON.parse(tool_call[:arguments])
-      result, found = execute_tool(tool_call[:name], arguments, yielder)
+      result, found = execute_tool(tool_call[:name], arguments, offset)
       append_message(role: 'tool',
         content: result,
         tool_name: tool_call[:name],
@@ -134,27 +151,27 @@ module Comrade
     # One streaming request/response pass. Text deltas flow out as events;
     # tool_call fragments accumulate until the stream ends, so the whole
     # frame lands complete. Returns { content:, tool_calls: } (indexed).
-    def stream_pass(yielder, tool_definitions: DEFINITIONS, final_instruction: nil)
+    def stream_pass(tool_definitions: DEFINITIONS, final_instruction: nil)
       content = +''
       tool_calls = Hash.new { |hash, index| hash[index] = { id: nil, name: +'', arguments: +'' } }
       each_frame(payload(tool_definitions: tool_definitions, final_instruction: final_instruction)) do |delta|
-        absorb_delta(delta, content, tool_calls, yielder)
+        absorb_delta(delta, content, tool_calls)
       end
       { content: content, tool_calls: tool_calls }
     end
 
-    def absorb_delta(delta, content, tool_calls, yielder)
+    def absorb_delta(delta, content, tool_calls)
       text = delta['content']
       calls = delta['tool_calls']
       return unless text || calls
 
-      absorb_text(text, content, yielder) if text
+      absorb_text(text, content) if text
       Array(calls).each { |fragment| absorb_tool_call(tool_calls, fragment) }
     end
 
-    def absorb_text(text, content, yielder)
+    def absorb_text(text, content)
       content << text
-      yielder << { type: 'delta', text: text }
+      @yielder << { type: 'delta', text: text }
     end
 
     def absorb_tool_call(tool_calls, fragment)
@@ -179,43 +196,50 @@ module Comrade
         function: { name: call[:name], arguments: call[:arguments] }, }
     end
 
-    def execute_tool(name, arguments, yielder)
-      yielder << { type: 'tool', name: name }.merge(arguments)
-      dispatch_tool(name, arguments)
+    def execute_tool(name, arguments, offset)
+      @yielder << { type: 'tool', name: name }.merge(arguments)
+      dispatch_tool(name, arguments, offset)
     rescue JSON::ParserError
       ['Invalid tool arguments', []]
     end
 
-    def dispatch_tool(name, arguments)
+    def dispatch_tool(name, arguments, offset)
       case name
-      when 'web_search' then search_results(arguments['query'])
-      when 'fetch_page' then fetch_content(arguments['url'])
+      when 'web_search' then search_results(arguments['query'], offset)
+      when 'fetch_page' then fetch_content(arguments['url'], offset)
       else ["Unknown tool: #{ name }", []]
       end
     end
 
-    def search_results(query)
+    # The model cites by [n], so it needs the real titles and urls —
+    # sources stripped of addresses are exactly what got confabulated.
+    # Numbering continues across rounds so the footer's [n] matches the
+    # canonical citations list the renderer resolves against.
+    def search_results(query, offset)
       results = Tools::WebSearch.call(query: query)
       return ['(no results)', []] unless results.is_a?(Array)
 
-      [results.map { |result| result['content'] }.join("\n"),
+      shown = results.each_with_index.map do |result, index|
+        "[#{ offset + index + 1 }] #{ result['title'] } — #{ result['url'] }\n#{ result['content'] }"
+      end
+      [shown.join("\n\n"),
        results.map { |result| { title: result['title'], url: result['url'] } },]
     end
 
-    def fetch_content(url)
+    def fetch_content(url, offset)
       content = Tools::FetchPage.call(url: url)
       if content.start_with?('Fetch ', 'No content')
         failed = 'No content could be extracted from that page — do not retry it or similar URLs;'
         return ["#{ failed } work from the search results or answer from what you have.", []]
       end
 
-      [content, [title: url, url: url]]
+      ["[#{ offset + 1 }] #{ url }\n\n#{ content }", [title: url, url: url]]
     end
 
-    def persist_answer(content, citations, yielder)
+    def persist_answer(content, citations)
       citations = citations.uniq { |citation| citation[:url] }.presence
       append_message(role: 'assistant', content: content, citations: citations)
-      yielder << { type: 'citations', citations: citations || [] } if citations
+      @yielder << { type: 'citations', citations: citations || [] } if citations
     end
 
     # read_body yields raw TCP chunks whose boundaries ignore SSE event
