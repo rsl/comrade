@@ -10,15 +10,28 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_22_173645) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_24_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "comrades", force: :cascade do |t|
+    t.string "token", null: false
+    t.string "name", null: false
+    t.jsonb "prefs"
+    t.jsonb "calibration"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_comrades_on_name", unique: true
+    t.index ["token"], name: "index_comrades_on_token", unique: true
+  end
 
   create_table "conversations", force: :cascade do |t|
     t.string "title"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.datetime "archived_at"
+    t.bigint "comrade_id"
+    t.index ["comrade_id"], name: "index_conversations_on_comrade_id"
   end
 
   create_table "good_job_batches", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -151,5 +164,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_173645) do
     t.index ["conversation_id"], name: "index_messages_on_conversation_id"
   end
 
+  add_foreign_key "conversations", "comrades"
   add_foreign_key "messages", "conversations"
 end
