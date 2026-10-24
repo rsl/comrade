@@ -142,11 +142,12 @@ redirect_to thing_path(thing)
 
 # ERB views
 
-Hand-write static markup as plain HTML: an element carrying no Ruby —
-`<html lang="en">`, `<head>`, static attributes — is clearer as HTML
-than as a tag-helper call. Reach for `tag.div` when Ruby enters the
-element: interpolated or conditional attributes, computed class lists,
-`dom_id`s. The rule governs where Ruby meets markup, not markup itself.
+Hand-write static markup as plain HTML. The line is the attribute
+position: any Ruby there — interpolated, conditional, computed — means
+a tag helper (`tag.article class: ...`); `<div class="<%= ... %>">` is
+always wrong. Static attributes stay literal, and ERB between the tags
+(`<p class="x">— <%= note %></p>`) is plain-tag territory.
+`dom_id`s and `class_names` go through tag helpers too.
 
 Prefer long single lines; let the editor soft-wrap — never manually break
 a tag call across source lines. Compute non-trivial values (class lists,
