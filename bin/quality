@@ -1,0 +1,17 @@
+#!/bin/sh
+# Full-repo quality gates: rubocop, reek, herb.
+# Lefthook checks staged files at commit; run this across the whole
+# repo before calling a task done.
+
+fail=0
+
+echo '== rubocop =='
+bundle exec rubocop --color || fail=1
+
+echo '== reek =='
+bundle exec reek || fail=1
+
+echo '== herb =='
+bundle exec herb lint app/views || fail=1
+
+exit $fail

@@ -10,9 +10,16 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_21_181624) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_22_173645) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "conversations", force: :cascade do |t|
+    t.string "title"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "archived_at"
+  end
 
   create_table "good_job_batches", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
@@ -131,4 +138,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_181624) do
     t.index ["scheduled_at", "queue_name"], name: "index_good_jobs_on_scheduled_at_and_queue_name"
     t.index ["scheduled_at"], name: "index_good_jobs_on_scheduled_at", where: "(finished_at IS NULL)"
   end
+
+  create_table "messages", force: :cascade do |t|
+    t.bigint "conversation_id", null: false
+    t.string "role", null: false
+    t.text "content"
+    t.jsonb "citations"
+    t.string "tool_name"
+    t.jsonb "tool_payload"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["conversation_id"], name: "index_messages_on_conversation_id"
+  end
+
+  add_foreign_key "messages", "conversations"
 end

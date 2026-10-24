@@ -1,2 +1,240 @@
 #!/usr/bin/env ruby
-exec "./bin/rails", "server", *ARGV
+# Foreground dev server: bin/dev [server flags] — plain passthrough to
+# `rails server`, with the COMRADE_PORT/PORT mapping below.
+# Background daemon: bin/dev start|stop|restart|status|logs — detached
+# processes (web + GoodJob worker + Tailwind watcher) logging to
+# log/dev-server.log with pids in tmp/pids/{devd,jobsd,tailwind}.pid.
+
+require 'socket'
+
+def dev_port
+  ENV['COMRADE_PORT'] || ENV['PORT'] || stored_port || '3000'
+end
+
+# The running server's port, recorded at start — status/stop must describe
+# the running process even from a shell without the exports.
+def stored_port
+  File.read('tmp/pids/devd.port').strip
+rescue Errno::ENOENT
+  nil
+end
+
+def start_port
+  ENV['COMRADE_PORT'] || ENV['PORT'] || stored_port || '3000'
+end
+PIDFILE = 'tmp/pids/devd.pid'
+JOBS_PIDFILE = 'tmp/pids/jobsd.pid'
+TAILWIND_PIDFILE = 'tmp/pids/tailwind.pid'
+PORTFILE = 'tmp/pids/devd.port'
+LOGFILE = 'log/dev-server.log'
+PROCESSES = { web: PIDFILE, jobs: JOBS_PIDFILE, tailwind: TAILWIND_PIDFILE }.freeze
+
+def pid(pidfile=PIDFILE)
+  File.read(pidfile).to_i
+rescue Errno::ENOENT
+  nil
+end
+
+def alive?(process_pid)
+  Process.kill(0, process_pid)
+  true
+rescue Errno::ESRCH, Errno::EPERM
+  false
+end
+
+def running?(pidfile=PIDFILE)
+  process_pid = pid(pidfile)
+  process_pid && alive?(process_pid)
+end
+
+def port_open?
+  # rubocop:disable-next Style/IpAddresses — the probe must hit the loopback
+  # literally; a hostname lookup could answer on another interface.
+  TCPSocket.new('127.0.0.1', dev_port).close
+  true
+rescue Errno::ECONNREFUSED
+  false
+end
+
+def wait_for_port(seconds)
+  (seconds * 2).times do
+    return true if port_open?
+
+    sleep 0.5
+  end
+  false
+end
+
+# Kill a pid, its process group first — spawn'd groups leak children when
+# only the leader is signalled.
+def kill_group_first(process_pid)
+  Process.kill('KILL', -Process.getpgid(process_pid))
+rescue Errno::EPERM
+  Process.kill('KILL', process_pid)
+rescue SystemCallError
+  nil
+end
+
+def sweep_stray_watchers
+  # Watchers from unmanaged pasts (bare puma runs, crashed daemons) linger
+  # forever — sweep any comrade tailwindcss watcher before spawning ours.
+  list = `ps ax -o pid=,command= | grep 'tailwindcss -i #{ Dir.pwd }/app/assets/tailwind' | grep -v grep`
+  list.each_line do |line|
+    stray = line.strip.split(/\s+/).first.to_i
+    next if stray.zero? || stray == pid(TAILWIND_PIDFILE)
+
+    kill_group_first(stray)
+  end
+end
+
+def kill_squatter(holder)
+  holder_pid = holder.to_i
+  return if holder_pid.zero? || holder_pid == pid(PIDFILE)
+
+  command = `ps -p #{ holder_pid } -o command=`.strip
+  message = "port #{ dev_port } is held by a foreign process (pid #{ holder_pid }: #{ command }) — not touching it; " \
+            'pick another COMRADE_PORT or kill it yourself'
+  abort message unless command.match?(/comrade/i)
+
+  kill_group_first(holder_pid)
+end
+
+def wait_for_free_port
+  10.times do
+    sleep 0.25
+    break unless port_open?
+  end
+end
+
+def sweep_port_squatters
+  # A process bound to our port but absent from our pidfiles is an orphan
+  # from an unmanaged past (bare `rails server`, crashed daemon). The port
+  # is comrade's by contract — comrade-shaped squatters get killed and the
+  # bind taken; anything else aborts loudly rather than shooting blind.
+  holders = `lsof -ti tcp:#{ dev_port }`.lines.map(&:strip).reject(&:empty?)
+  holders.each { |holder| kill_squatter(holder) }
+  wait_for_free_port unless holders.empty?
+end
+
+def spawn_managed(name, command, env={})
+  process_pid = Process.spawn(env, *command, out: [LOGFILE, 'a'], err: %i[child out], pgroup: true)
+  File.write(PROCESSES.fetch(name), process_pid)
+  Process.detach(process_pid)
+  process_pid
+end
+
+# The watcher reads stdin (langafile's pattern) — feed it an endless
+# tail so it survives its parent shell. The binary platform gem is
+# skipped when the global BUNDLE_FORCE_RUBY_PLATFORM export is set,
+# so force it off here.
+# rubocop:disable-next Style/StringHashKeys — Process.spawn's env map takes
+# string keys; symbols silently fail to override the child environment.
+def spawn_tailwind
+  env = { 'BUNDLE_FORCE_RUBY_PLATFORM' => 'false' }
+  spawn_managed(:tailwind, ['sh', '-c', 'tail -f /dev/null | ./bin/rails tailwindcss:watch'], env)
+end
+
+# rubocop:disable-next Style/StringHashKeys — Process.spawn's env map takes
+# string keys; symbols silently fail to override the child environment.
+def spawn_web
+  spawn_managed(:web, ['./bin/dev'], { 'PORT' => start_port })
+end
+
+def started_message(spawned, jobs, tailwind)
+  detail = "pid #{ spawned }, jobs pid #{ jobs }, tailwind pid #{ tailwind }"
+  "comrade dev server on port #{ start_port } (#{ detail }, log #{ LOGFILE })"
+end
+
+def report_failure
+  puts "server did not come up on port #{ start_port } — last log lines:"
+  system('tail', '-n', '20', LOGFILE)
+  exit 1
+end
+
+def start_server
+  abort "already running (pid #{ pid })" if running?
+
+  sweep_stray_watchers
+  sweep_port_squatters
+
+  File.write(PORTFILE, start_port)
+  tailwind = spawn_tailwind
+  jobs = spawn_managed(:jobs, ['./bin/jobs'])
+  spawned = spawn_web
+  report_failure unless wait_for_port(15)
+  puts started_message(spawned, jobs, tailwind)
+end
+
+def terminate_group(current)
+  [current, -current].uniq.each do |target|
+    Process.kill('TERM', target)
+  rescue StandardError
+    nil
+  end
+end
+
+def wait_for_exit(process_pid)
+  20.times do
+    break unless alive?(process_pid)
+
+    sleep 0.25
+  end
+end
+
+def stop_process(pidfile)
+  current = pid(pidfile)
+  return unless current && alive?(current)
+
+  # Negative pid = the whole process group (we spawn with pgroup: true).
+  # TERM to the leader alone leaks the group's children — the sh/tail/
+  # tailwindcss chain — which is how stale watchers accumulated.
+  terminate_group(current)
+  wait_for_exit(current)
+  kill_group_first(current) if alive?(current)
+  File.delete(pidfile)
+  current
+rescue Errno::ESRCH
+  File.delete(pidfile) if pid(pidfile) == current
+  nil
+end
+
+def stop_server
+  abort 'not running' if PROCESSES.values.none? { |file| running?(file) }
+
+  # rubocop:disable-next Rails/IndexWith — bin/dev runs without ActiveSupport;
+  # index_with doesn't exist here.
+  stopped = PROCESSES.keys.reverse.to_h { |name| [name, stop_process(PROCESSES[name])] }
+  puts "stopped (#{ stopped.map { |name, process_pid| "#{ name } pid #{ process_pid }" }.join(', ') })"
+end
+
+case ARGV.first
+when 'start'
+  start_server
+when 'stop'
+  stop_server
+when 'restart'
+  stop_server if PROCESSES.values.any? { |file| running?(file) }
+  start_server
+when 'status'
+  if running?(PIDFILE)
+    state = port_open? ? 'answering' : 'booting'
+    states = PROCESSES.reject { |name, _| name == :web }.map do |name, file|
+      running?(file) ? "#{ name } pid #{ pid(file) }" : "#{ name } stopped"
+    end
+    puts "running (pid #{ pid }, port #{ dev_port }, #{ state }, #{ states.join(', ') })"
+  else
+    puts 'stopped'
+  end
+when 'logs'
+  abort "no log at #{ LOGFILE } — never started?" unless File.exist?(LOGFILE)
+
+  exec 'tail', '-n', '50', '-f', LOGFILE
+else
+  # Foreground passthrough — flags and bare invocation go to rails server.
+  # Bound wide in dev so fleet devices (iPad) reach it via Bonjour; the
+  # app is authless, so production binding stays puma.rb/Kamal business.
+  ENV['PORT'] = ENV['COMRADE_PORT'] if ENV['COMRADE_PORT']
+  # rubocop:disable-next Style/IpAddresses — the dev binding is deliberately
+  # wide (0.0.0.0) so fleet devices reach it; production stays puma.rb.
+  exec './bin/rails', 'server', '--binding', '0.0.0.0', *ARGV
+end

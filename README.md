@@ -78,9 +78,9 @@ Comrade needs three things running nearby:
 
 1. **A model server** — anything speaking the OpenAI chat-completions API:
    ```bash
-   export LLM_BASE_URL="http://127.0.0.1:8888/v1"
-   export LLM_API_KEY="sk-..."
-   export LLM_MODEL="GLM-5.3-Flash-oQ6e-mtp"
+   export COMRADE_LLM_BASE_URL="http://127.0.0.1:8888/v1"
+   export COMRADE_LLM_API_KEY="sk-..."
+   export COMRADE_LLM_MODEL="GLM-5.3-Flash-oQ6e-mtp"
    ```
 2. **SearXNG** for search — a bare local install is fine (see
    `docs/searxng.md` for a launchd setup).
@@ -103,6 +103,9 @@ section are all legitimate contributions.
 
 Two conventions:
 
+- **Code style lives in** `.agents/skills/ruby-style` — preferences with
+  reasons, applied to code contributed here. The gates (rubocop, reek, herb)
+  run at commit.
 - **No CLA.** You keep your copyright; contributions are licensed to the
   project under AGPL-3.0, same as everything else. (A CLA — Contributor
   License Agreement — is the document some projects make you sign to hand

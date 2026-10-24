@@ -39,3 +39,8 @@
 
 # Agent design contract — private by decision; public content lives in docs/
 .agent-notes/roadmap.md
+
+# Personal prompt override — the shipped voice lives in comrade_prompt.md
+/config/comrade_prompt.custom.md
+/app/assets/builds/*
+!/app/assets/builds/.keep

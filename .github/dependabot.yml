@@ -1,0 +1,23 @@
+# Dependency updates, grouped: one PR per ecosystem instead of one PR per
+# dependency — the noise of individual PRs is why Dependabot was disabled
+# on 2026-10-21; grouping answers that objection.
+# Re-enabled 2026-10-23, ahead of the roadmap's Phase 5 schedule.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - '*'
+
+  - package-ecosystem: bundler
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      gems:
+        patterns:
+          - '*'
