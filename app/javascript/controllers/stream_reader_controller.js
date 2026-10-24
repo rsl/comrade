@@ -369,12 +369,18 @@ export default class extends Controller {
     content.classList.remove("whitespace-pre-wrap")
     const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 
-    const markerUrls = {}
+    const markerSources = {}
     const body = this.partial.replace(/\n?Sources?:\n((?:\s*\[\d+\][^\n]*\n?)+)\s*$/, (block, lines) => {
+      // The model writes titles into the footer — they beat bare hosts
+      // when the cited url isn't in the canonical citations list.
       for (const line of lines.split("\n")) {
         const match = line.match(/^\s*\[(\d+)\]\s*(.+)$/)
-        const url = match && (match[2].match(/https?:\/\/\S+/) || [])[0]
-        if (match && url) markerUrls[parseInt(match[1])] = url
+        if (!match) continue
+        const urlMatch = match[2].match(/https?:\/\/\S+/)
+        if (!urlMatch) continue
+        const url = urlMatch[0]
+        const title = match[2].replace(url, "").replace(/\s*[–—-]\s*$/, "").trim() || null
+        markerSources[parseInt(match[1])] = { url, title }
       }
       return "\n"
     })
@@ -382,10 +388,10 @@ export default class extends Controller {
     content.innerHTML = body.split(/\n\n+/).map((paragraph) => {
       const urls = []
       const plain = this.sansSup(this.sansRangeMarkers(paragraph)).replace(/\[(\d+)\]/g, (marker, n) => {
-        const url = markerUrls[parseInt(n)]
-        if (!url) return marker
-        const citation = citations.find((c) => c.url === url)
-        urls.push(citation || { url, title: new URL(url).host })
+        const cited = markerSources[parseInt(n)]
+        if (!cited) return marker
+        const citation = citations.find((c) => c.url === cited.url)
+        urls.push(citation || { url: cited.url, title: cited.title || new URL(cited.url).host })
         return ""
       })
       const chips = this.sourceChips(urls, escape)
