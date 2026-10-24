@@ -13,12 +13,14 @@
 <% else %>
   <%= tag.article class: message.role == 'user' ? 'text-neutral-100' : 'text-neutral-300' do %>
     <p class="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500"><%= message.role == 'user' ? 'You' : 'Comrade' %></p>
-    <%# The chips are Comrade's own actions, so they render under their name, ahead of the answer — one group carrying the outer spacing, tight between themselves. %>
-    <div class="mt-2 mb-3">
-      <% tool_notes.each do |note| %>
-        <p class="mb-1 text-xs text-neutral-500">— <%= tool_note(note) %></p>
-      <% end %>
-    </div>
+    <%# The chips are Comrade's own actions, so they render under their name, ahead of the answer — one group carrying the outer spacing, tight between themselves. Rendered only when notes exist: an empty group div adds height the client render doesn't, and the post-first-reply Turbo.visit swap reflows visibly. (2026-10-24) %>
+    <% if tool_notes.any? %>
+      <div class="mt-2 mb-3">
+        <% tool_notes.each do |note| %>
+          <p class="mb-1 text-xs text-neutral-500">— <%= tool_note(note) %></p>
+        <% end %>
+      </div>
+    <% end %>
     <% if message.role == 'assistant' %>
       <div class="leading-relaxed"><%= cited_paragraphs(message) %></div>
     <% else %>
