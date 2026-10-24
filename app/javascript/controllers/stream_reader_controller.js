@@ -111,7 +111,11 @@ export default class extends Controller {
     input.value = ""
     this.syncAskButton()
     this.clearRetries()
-    const interrupted = this.partial
+    // Only an in-flight stream can be interrupted. A completed stream also
+    // leaves `partial` holding its full text — sending that as `interrupted`
+    // makes the server persist the previous answer again as a lead-in row
+    // (the duplicate-transcript bug of 2026-10-24).
+    const interrupted = this.currentRequest ? this.partial : ""
     // Steering: finalize the interrupted answer with what arrived — its
     // citation pass runs now, before the new stream resets the shared
     // stream state — then abort the request.
