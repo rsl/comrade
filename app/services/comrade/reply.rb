@@ -328,7 +328,8 @@ module Comrade
     end
 
     def payload(tool_definitions: DEFINITIONS, final_instruction: nil)
-      messages = [role: 'system', content: prompt] + @conversation.to_transcript
+      messages = [{ role: 'system', content: prompt }, prefs_message].compact
+      messages.concat(@conversation.to_transcript)
       messages << { role: 'system', content: final_instruction } if final_instruction
       {
         model: ENV.fetch('COMRADE_LLM_MODEL'),
@@ -337,6 +338,20 @@ module Comrade
         stream: true,
         max_tokens: 8192,
       }
+    end
+
+    # Prefs ride as a second system message layered after the base prompt —
+    # one injection point forever; new prefs are new jsonb keys, no
+    # migrations. Values are directive lines the reader authored (Party
+    # Line, or a confirmed nudge); keys are addresses. Like the system
+    # prompt, prefs are config, never a row. The commune has no row, so it
+    # always gets the factory voice.
+    def prefs_message
+      prefs = @conversation.comrade&.prefs
+      lines = prefs&.values&.filter_map(&:presence)
+      return if lines.blank?
+
+      { role: 'system', content: "How this reader wants answers — apply as written:\n#{ lines.join("\n") }" }
     end
 
     def prompt
