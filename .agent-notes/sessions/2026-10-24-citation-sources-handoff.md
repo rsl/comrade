@@ -1,20 +1,17 @@
 # Session handoff — 2026-10-24, citation source chain + reply-loop numbering
 
-**State: Sat 2026-10-24, midday. Branch `rsl-citation-sources` holds the
-citation chain + UI shell rework, unpushed — rsl holds the push. Working
-tree clean, all gates green. Verified working on iPad: citation chain
-(real titled sources, no fabricated urls), fixed shell layout, keyboard
-focus (scroll pinned, shell tracks visualViewport), fresh-conversation
-swap, working title, sidebar. The keyboard-bug chase is CLOSED and
-measured (see the UI session section): the "composer under accessory
-bar" overlap was the first frame of iPadOS's floating keyboard
-accessory bar appearing — a sub-second transient, self-healing, both
-steady states verified correct with the ?vvdebug readout. rsl uses a
-Magic Keyboard, so the software keyboard never opens; the 69pt
-reservation is the accessory bar alone. Remaining open items: push +
-PR (rsl's call), dead-code riders, stray caret artifact (cosmetic),
-specs when shapes settle. The inherited handoff
-(`2026-10-23-quality-review-erb-rewrite`) is archived.**
+**State: Sat 2026-10-24, late. Session complete. Branch
+`rsl-citation-sources` holds 17 commits — the citation chain, the iOS
+fixed-shell rework, the duplicate-transcript fix, the double-check
+offer, upstream hardening, and the composer focus work — pushed, with
+PR #10 open for the maintainer. All gates green, working tree clean
+except this handoff. The keyboard-bug chase closed measured (UI session
+section below); the duplicate-transcript bug was found, root-caused,
+and fixed the same day; the Action Cable streaming move has a transport
+design in `docs/architecture.md` under the roadmap's resumability
+decision. Every open item lives in the roadmap registry. Next
+session's opening act: consume this handoff, verify the registry,
+archive it.**
 
 ## Built (committed on `rsl-citation-sources`)
 
@@ -135,16 +132,56 @@ settled). A stray text caret rendering at stale coordinates across
 layout shifts appeared in several captures at varying positions —
 cosmetic, watch only.
 
+## Afternoon: duplicate transcript, double-check offer, hardening
+
+- **Duplicate-transcript bug** (found via the kitkat conversation while
+  prepping the search/no-search discussion): every assistant turn saved
+  twice — the timestamps cracked it. `submit()` captured `this.partial`
+  unconditionally, and after a completed stream it holds the previous
+  answer's full text, so each show-page submit re-sent it as
+  `interrupted`; the server's `persist_lead_in` faithfully wrote it as a
+  row milliseconds ahead of the next user message. The last turn's
+  stale-content twin rode the same payload through the retry link. Fix:
+  capture `interrupted` only when a request is in flight (ce7c4ae); the
+  8 junk rows deleted from convs 67, 116, 121 with twin-guards.
+- **Double check on memory answers** (a70c2f7): rsl's design — the
+  escape hatch as one click instead of typing. Canned turn shaped to
+  cover both failure classes after rsl pushed on it: verification of
+  claims (confirmation-shaped search) AND completeness ("anything
+  wrong, anything missing?" — the open search, which self-verification
+  alone never leaves the answer's silhouette for). Latest memory answer
+  only; each new turn demotes the prior offer; client footer byte
+  -identical with the server render. Note: search chips show the
+  model's literal query, and nothing in the prompt teaches query style —
+  the stuffed queries ("Kit Kat history 1935 Rowntree's York launched")
+  are model habit; a one-line prompt nudge ("short, general queries")
+  is available if the chips bother.
+- **Upstream hardening** (58206c6): the "reply failed" during rsl's
+  double-check test was comrade's answer request queued behind THIS
+  session's own inference on the shared oMLX, killed by Net::HTTP's 60s
+  idle timeout. 300s read / 30s open now explicit; UpstreamError logs
+  server-side (the reason previously existed only in the reader's
+  retry line — diagnosis was timestamp archaeology).
+- **Composer focus** (d2fb0d0): landing focuses the composer when
+  `fresh`; the Ask button prevents mousedown's default so tapping it
+  never blurs the textarea — iOS cancelled the tap's click across the
+  blur + viewport recalc (the two-tap send). Focus survives sending.
+
 ## Open items → registry
 
 - Keyboard/accessory-bar bug → CLOSED, measured (see UI session
-  section). Remaining action on the branch: push `rsl-citation-sources`
-  + open the PR — rsl holds the push.
-- Dead code riders (`marker_index`, `sawCitations`) → still in
-  `roadmap.md` (Open questions).
-- Stray caret artifact (cosmetic, iOS) → watch it in normal use.
-- Specs for the citation chain and the shell rework → land when the
-  shapes settle, per repo convention.
+  section); the accessory bar is now disabled on rsl's iPad via
+  Predictive-off (comrade talked rsl through it — conv 122).
+- Push + PR → DONE: `rsl-citation-sources` pushed, PR #10 open for the
+  maintainer.
+- Dead code riders (`marker_index`, `sawCitations`) → roadmap (Open
+  questions).
+- Stray caret artifact (cosmetic, iOS) → roadmap (Open questions).
+- Specs for the citation chain, the shell rework, and the double-check
+  offer → Phase 5, when shapes settle, per repo convention.
+- Action Cable streaming move → transport design committed in
+  `docs/architecture.md` (Streaming); pointer added to the roadmap's
+  resumability turn. Build triggers documented there.
 - The working tree's modified files → committed on
   `rsl-citation-sources`; branch awaits the maintainer's PR/merge.
 
@@ -156,3 +193,11 @@ cosmetic, watch only.
   inline claims sit next to numbered-menu-derived chips.
 - Next fresh search reply: the model's tool row shows the numbered menu;
   chips match the footer's titles.
+- The kitkat conversation: memory answers carry "from model knowledge";
+  the latest one offers "· double check" — tapping it submits the canned
+  verification turn and the model searches (both claim-check and gap
+  -hunt). Older answers show the plain footer.
+- New conversation: landing focuses the composer; typing and one tap on
+  Ask sends — no second tap, and focus stays for the next message.
+- A conversation where an answer came from search: no double-check
+  offer (the receipts are the sources footer).
