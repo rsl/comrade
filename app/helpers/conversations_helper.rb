@@ -91,6 +91,9 @@ module ConversationsHelper
   def paragraph_sources(paragraph, citations, marker_urls)
     sources = []
     plain = paragraph.gsub(/\[(\d+)\]/) do
+      # The block's return value is the replacement text: each marker
+      # vanishes from the rendered paragraph, and only its source hash
+      # (collected above, when it resolves) survives into the chips.
       cited = marker_urls[Regexp.last_match(1).to_i]
       sources << source_for(cited, citations) if cited
       ''
