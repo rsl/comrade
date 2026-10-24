@@ -136,6 +136,7 @@ export default class extends Controller {
   async stream(content, interrupted, answer, { retry }) {
     this.partial = ""
     this.pendingCitations = null
+    this.clearDoubleChecks()
     const request = this.currentRequest = new AbortController()
     this.liveAnswer = answer
     this.showLiveDot(answer)
@@ -444,7 +445,28 @@ export default class extends Controller {
   }
 
   get ownKnowledgeHtml() {
-    return '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">from model knowledge</div>'
+    // Must stay byte-identical with _message.html.erb's double_check footer:
+    // the post-first-reply Turbo.visit swaps one for the other.
+    return '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">from model knowledge<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">double check</a></span></div>'
+  }
+
+  // The offer on a memory answer: submit a canned verification turn through
+  // the composer path, so it behaves exactly like typed text. Refuses while
+  // a stream is live (it would steer) and when a draft sits in the composer
+  // (never clobber one).
+  doubleCheck(event) {
+    event.preventDefault()
+    const input = this.formTarget.elements.content
+    if (this.currentRequest || input.value.trim()) return
+    input.value = "double check that against sources — anything wrong, anything missing?"
+    this.formTarget.requestSubmit()
+  }
+
+  // The link targets the latest answer by design ("double check that"); a
+  // new turn demotes every older link, so they leave the DOM at stream
+  // start. The server render shows it on the latest memory answer only.
+  clearDoubleChecks() {
+    this.element.querySelectorAll(".double-check-offer").forEach((el) => { el.remove() })
   }
 
   scrollToBottom() {

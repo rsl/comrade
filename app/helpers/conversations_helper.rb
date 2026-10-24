@@ -7,8 +7,20 @@ module ConversationsHelper
     render 'chat', endpoint:, fresh:, conversation:, messages:
   end
 
-  def message_turn(message, tool_notes: [])
-    render 'message', message:, tool_notes:
+  def message_turn(message, tool_notes:, double_check:)
+    render 'message', message:, tool_notes:, double_check:
+  end
+
+  # The id of the conversation's most recent memory answer - the only turn
+  # whose "double check" link has an unambiguous target. On older turns the
+  # canned verification question ("double check that") would land after the
+  # full transcript and point at whatever answer came last, so the link
+  # renders on the latest memory answer alone.
+  def double_check_id(messages)
+    latest = messages.reverse.detect do |turn|
+      turn.role == 'assistant' && turn.citations.blank? && turn.tool_payload.blank?
+    end
+    latest&.id
   end
 
   # One transcript turn: a message plus the tool chips that answer into
