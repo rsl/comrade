@@ -7,8 +7,20 @@ module ConversationsHelper
     render 'chat', endpoint:, fresh:, conversation:, messages:
   end
 
-  def message_turn(message, tool_notes: [])
-    render 'message', message:, tool_notes:
+  def message_turn(message, tool_notes:, double_check:)
+    render 'message', message:, tool_notes:, double_check:
+  end
+
+  # The id of the conversation's most recent memory answer - the only turn
+  # whose "double check" link has an unambiguous target. On older turns the
+  # canned verification question ("double check that") would land after the
+  # full transcript and point at whatever answer came last, so the link
+  # renders on the latest memory answer alone.
+  def double_check_id(messages)
+    latest = messages.reverse.detect do |turn|
+      turn.role == 'assistant' && turn.citations.blank? && turn.tool_payload.blank?
+    end
+    latest&.id
   end
 
   # One transcript turn: a message plus the tool chips that answer into
@@ -79,16 +91,24 @@ module ConversationsHelper
   def paragraph_sources(paragraph, citations, marker_urls)
     sources = []
     plain = paragraph.gsub(/\[(\d+)\]/) do
-      url = marker_urls[Regexp.last_match(1).to_i]
-      if url
-        # jsonb row data — string keys are the storage contract.
-        known = citations.detect { |citation| citation['url'] == url }
-        # rubocop:disable-next Style/StringHashKeys
-        sources << (known || { 'url' => url, 'title' => URI.parse(url).host })
-      end
+      # The block's return value is the replacement text: each marker
+      # vanishes from the rendered paragraph, and only its source hash
+      # (collected above, when it resolves) survives into the chips.
+      cited = marker_urls[Regexp.last_match(1).to_i]
+      sources << source_for(cited, citations) if cited
       ''
     end
     [sans_marker_ranges(sans_sup_tags(plain)), sources.uniq { |source| source['url'] }]
+  end
+
+  # jsonb row data — string keys are the storage contract.
+  def source_for(cited, citations)
+    known = citations.detect { |citation| citation['url'] == cited['url'] }
+    return known if known
+
+    # rubocop:disable-next Style/StringHashKeys
+    { 'url' => cited['url'],
+      'title' => cited['title'] || URI.parse(cited['url']).host, }
   end
 
   # Inline source chips: title-only links, quiet, one per source.
@@ -119,7 +139,9 @@ module ConversationsHelper
   end
 
   # Splits the model's trailing "Sources:" footer off the answer and
-  # returns the body plus a { marker number => url } map.
+  # returns the body plus a { marker number => { url:, title: } } map —
+  # the model writes titles into the footer, and they beat bare hosts
+  # when the cited url isn't in the canonical citations list.
   def footer_map(content)
     map = {}
     body = content.to_s.sub(/\n?Sources?:\n((?:\s*\[\d+\][^\n]*\n?)+)\s*\z/) do
@@ -132,14 +154,18 @@ module ConversationsHelper
   def parse_footer_lines(footer_block, map)
     footer_block.each_line do |line|
       number, text = line.match(/^\s*\[(\d+)\]\s*(.+)$/)&.captures
-      url = text&.match(%r{https?://\S+})&.to_s
-      map[number.to_i] = url if number && url
+      next unless number && (url = text&.match(%r{https?://\S+})&.to_s)
+
+      # jsonb row data — string keys are the storage contract.
+      title = text.sub(url, '').strip.sub(/[—–-]\s*\z/, '').strip
+      # rubocop:disable-next Style/StringHashKeys
+      map[number.to_i] = { 'url' => url, 'title' => title.presence }
     end
   end
 
   # :reek:NilCheck — a nil index is the signal: the marker stays as written.
   def marker_index(marker, citations, marker_urls)
-    url = marker_urls[marker]
+    url = marker_urls.dig(marker, 'url')
     return citations.index { |citation| citation['url'] == url }&.next if url
 
     marker if marker.between?(1, citations.size)

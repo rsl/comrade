@@ -45,7 +45,10 @@ module StreamsReply
       yielder << "data: [DONE]\n\n"
     rescue Comrade::Reply::UpstreamError => error
       # The status is already 200 and streaming, so the failure travels as
-      # an event; the reader renders it into the retry line.
+      # an event; the reader renders it into the retry line. Logging it
+      # server-side too — the retry line dies with the tab, the log
+      # doesn't (the 2026-10-24 diagnosis was archaeology without this).
+      Rails.logger.error("[reply] upstream failure: #{ error.message }")
       yielder << "data: #{ { type: 'error', message: error.message }.to_json }\n\n"
       yielder << "data: [DONE]\n\n"
     end

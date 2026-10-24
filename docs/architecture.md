@@ -74,8 +74,55 @@ interchangeable by construction.
 Answers stream through a Stimulus controller reading a stream reader off a
 normal `fetch` — not `ActionController::Live` + Turbo SSE. AC::Live's
 threading model is a known source of gotchas, and the plain-fetch approach
-keeps the loop in one place. The upgrade path to Turbo Streams over Solid
-Cable stays open.
+keeps the loop in one place.
+
+### The planned move to Action Cable (not built yet)
+
+The current transport holds an HTTP request open for the whole generation,
+and that coupling is the root of its failure class: the client aborting
+kills the generator (steering depends on this — but so does a Safari
+connection dying mid-stream, which loses the whole answer, tool rows and
+all); and a busy model server queues requests without sending a byte, so
+the socket's idle timeout reads "queued" as "dead" (2026-10-24's reply
+failure; patched with a 300s read timeout, which is patience, not a cure).
+The plan, when the pain earns the build:
+
+**Shape.** POST /messages persists the user turn and starts the generation
+server-side (a GoodJob job — the worker daemon already runs), returning
+immediately. The generator broadcasts deltas over an Action Cable channel;
+Solid Cable carries them over Postgres pub/sub. The server owns
+persistence: tool rows, the partial, the answer — written as generation
+proceeds, so a dead client loses nothing.
+
+**The event contract survives.** The channel carries the same vocabulary
+the SSE transport uses today (delta / tool / citations / error / done) —
+the client's stream reader changes its input pipe, not its logic.
+
+**The hard parts, designed before building:**
+
+- **Cancellation.** Steering aborts the request today; over Cable, abort
+  means nothing. The generator needs a cancel flag it polls between deltas
+  plus a kill of its upstream model connection, and the steer POST must
+  name the generation to cancel. Orphaned generations need cleanup.
+- **Batching.** Solid Cable is pub/sub over Postgres — built for
+  occasional broadcasts, not a thousand NOTIFYs per reply. Deltas flush on
+  a ~100–200ms timer; the liveness dot covers the gap.
+- **Job patience without retries.** GoodJob's retry is wrong for
+  generation: a retry re-runs searches and duplicates turns. Generation
+  jobs discard on failure, broadcasting the error to the channel — the
+  retry link stays the reader's re-run, exactly as today.
+- **Reconnect.** On resubscribe, the client rebuilds the in-flight turn
+  from the persisted partial and continues from the live feed — cheap
+  precisely because the server persists partials.
+
+**What it buys when built.** Connection-death stops losing answers; a busy
+model queue becomes a wait instead of a failure; every fleet device
+watching a conversation sees it grow live; and "model busy" can be shown
+honestly instead of guessed at.
+
+**What triggers the build.** Lost partials annoying in real use, multi
+-device live transcripts wanted, or the busy-model wait visibly hurting.
+One of those, not curiosity alone — the SSE transport works today.
 
 ## Search and fetch
 

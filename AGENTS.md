@@ -109,6 +109,24 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
 
 ## Gotchas
 
+- The app is a fixed `inset`-shell (layout `application.html.erb`): the
+  document never scrolls; only the transcript panel scrolls internally.
+  Keep it that way — every document-scroll state on iOS Safari becomes a
+  bug class of its own (dead scroll, pan-on-focus, scroll carry across
+  the post-first-reply Turbo.visit). Consequences that must survive:
+  the client turn (stream_reader_controller.js) and the server render
+  (`_message.html.erb`) stay pixel-identical across the visit swap (bit
+  twice: title spacer 2026-10-23, empty tool-notes wrapper 2026-10-24),
+  and all scrolling in the stream reader targets the transcript panel,
+  never `window`.
+- Viewport units cannot express "minus keyboard" on iOS: Safari ships no
+  `interactive-widget` (expected 27.1), `vh`/`svh`/`dvh` each lie in a
+  different URL-bar/keyboard state, and iOS scrolls the window itself on
+  focus even when nothing is scrollable. The app therefore sizes its
+  shell from `visualViewport.height` (visual_viewport_boot.js) and pins
+  `window.scrollY` to 0 around focus. Don't reintroduce `100vh`-family
+  sizing for full-height surfaces. (2026-10-24, learned the hard way —
+  the vvdebug probe in the session notes has the numbers.)
 - Non-Latin text (Devanagari etc.) renders badly in the terminal when
   inline with English — always put it on its own line(s), never
   mid-sentence.

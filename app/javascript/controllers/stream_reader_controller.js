@@ -12,7 +12,7 @@ import { marked } from "marked"
 // names it, later exchanges post to its messages endpoint, and the first
 // completed stream visits the conversation's permanent address.
 export default class extends Controller {
-  static targets = ["form", "transcript"]
+  static targets = ["form", "transcript", "title"]
   static values = { endpoint: String, fresh: Boolean }
 
   // The in-flight request, abortable, and the partial answer text it has
@@ -31,23 +31,30 @@ export default class extends Controller {
   autoScroll = true
 
   connect() {
+    // The transcript panel is the scroll surface (app shell: the document
+    // never scrolls), so liveness tracking binds to it, not the window.
     this.onScroll = () => this.updateAutoScroll()
-    window.addEventListener("scroll", this.onScroll)
+    this.transcriptTarget.addEventListener("scroll", this.onScroll)
     // The Ask button reads "…" while a stream runs, back to "Ask" the
     // moment there's a draft to send — submitting then steers.
     this.askButton = this.formTarget.querySelector('button[type="submit"]')
     this.formTarget.elements.content.addEventListener("input", () => this.syncAskButton())
+    // A new conversation starts with the composer focused — land and type.
+    // Only the landing grabs focus; opening an old conversation to read it
+    // shouldn't steal focus (or pop the keyboard accessory bar).
+    if (this.freshValue) this.formTarget.elements.content.focus()
     this.element.insertAdjacentHTML("beforeend",
       '<button type="button" data-action="stream-reader#jumpToLatest" class="jump-latest fixed bottom-28 right-64 z-20 hidden cursor-pointer rounded-full bg-soviet/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-soviet/60">↓ latest</button>')
   }
 
   disconnect() {
-    window.removeEventListener("scroll", this.onScroll)
+    this.transcriptTarget.removeEventListener("scroll", this.onScroll)
     this.element.querySelector(".jump-latest")?.remove()
   }
 
   updateAutoScroll() {
-    const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80
+    const panel = this.transcriptTarget
+    const nearBottom = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 80
     this.autoScroll = nearBottom
     this.element.querySelector(".jump-latest")?.classList.toggle("hidden", nearBottom)
   }
@@ -55,7 +62,7 @@ export default class extends Controller {
   // Chip click (or scrolling home manually) re-pins the reader.
   jumpToLatest() {
     this.autoScroll = true
-    window.scrollTo({ top: document.documentElement.scrollHeight })
+    this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight
     this.element.querySelector(".jump-latest")?.classList.add("hidden")
   }
 
@@ -108,7 +115,11 @@ export default class extends Controller {
     input.value = ""
     this.syncAskButton()
     this.clearRetries()
-    const interrupted = this.partial
+    // Only an in-flight stream can be interrupted. A completed stream also
+    // leaves `partial` holding its full text — sending that as `interrupted`
+    // makes the server persist the previous answer again as a lead-in row
+    // (the duplicate-transcript bug of 2026-10-24).
+    const interrupted = this.currentRequest ? this.partial : ""
     // Steering: finalize the interrupted answer with what arrived — its
     // citation pass runs now, before the new stream resets the shared
     // stream state — then abort the request.
@@ -129,6 +140,7 @@ export default class extends Controller {
   async stream(content, interrupted, answer, { retry }) {
     this.partial = ""
     this.pendingCitations = null
+    this.clearDoubleChecks()
     const request = this.currentRequest = new AbortController()
     this.liveAnswer = answer
     this.showLiveDot(answer)
@@ -235,6 +247,13 @@ export default class extends Controller {
     this.element.querySelector(".jump-latest")?.classList.add("hidden")
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("user", content))
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
+    // The reserved title row becomes the conversation's working title —
+    // the sent question, truncated exactly like Conversation.start! — so
+    // the row reads the same before and after the Turbo.visit swap.
+    if (this.hasTitleTarget) {
+      this.titleTarget.classList.remove("invisible")
+      this.titleTarget.querySelector("span").textContent = content.replace(/\s+/g, " ").slice(0, 50)
+    }
     const turns = this.transcriptTarget.querySelectorAll("article")
     const answer = turns[turns.length - 1]
     // Streamed text renders in final color from the start — no
@@ -266,6 +285,16 @@ export default class extends Controller {
     const input = this.formTarget.elements.content
     const busy = this.currentRequest && !input.value.trim()
     this.askButton.textContent = busy ? "…" : "Ask"
+  }
+
+  // A tap on Ask while the composer is focused blurs the textarea first —
+  // and iOS Safari cancels the tap's click across the focus change and the
+  // viewport recalc it triggers (accessory bar hides, shell re-sizes), so
+  // the first tap never submits. Preventing mousedown's default keeps
+  // focus in the composer: no blur, no recalc, the tap completes — and
+  // focus survives sending, so the next message needs no re-tap.
+  holdFocus(event) {
+    event.preventDefault()
   }
 
   // End-of-stream pass for a steered-away answer: same formatting the
@@ -369,12 +398,18 @@ export default class extends Controller {
     content.classList.remove("whitespace-pre-wrap")
     const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 
-    const markerUrls = {}
+    const markerSources = {}
     const body = this.partial.replace(/\n?Sources?:\n((?:\s*\[\d+\][^\n]*\n?)+)\s*$/, (block, lines) => {
+      // The model writes titles into the footer — they beat bare hosts
+      // when the cited url isn't in the canonical citations list.
       for (const line of lines.split("\n")) {
         const match = line.match(/^\s*\[(\d+)\]\s*(.+)$/)
-        const url = match && (match[2].match(/https?:\/\/\S+/) || [])[0]
-        if (match && url) markerUrls[parseInt(match[1])] = url
+        if (!match) continue
+        const urlMatch = match[2].match(/https?:\/\/\S+/)
+        if (!urlMatch) continue
+        const url = urlMatch[0]
+        const title = match[2].replace(url, "").replace(/\s*[–—-]\s*$/, "").trim() || null
+        markerSources[parseInt(match[1])] = { url, title }
       }
       return "\n"
     })
@@ -382,10 +417,10 @@ export default class extends Controller {
     content.innerHTML = body.split(/\n\n+/).map((paragraph) => {
       const urls = []
       const plain = this.sansSup(this.sansRangeMarkers(paragraph)).replace(/\[(\d+)\]/g, (marker, n) => {
-        const url = markerUrls[parseInt(n)]
-        if (!url) return marker
-        const citation = citations.find((c) => c.url === url)
-        urls.push(citation || { url, title: new URL(url).host })
+        const cited = markerSources[parseInt(n)]
+        if (!cited) return marker
+        const citation = citations.find((c) => c.url === cited.url)
+        urls.push(citation || { url: cited.url, title: cited.title || new URL(cited.url).host })
         return ""
       })
       const chips = this.sourceChips(urls, escape)
@@ -424,10 +459,31 @@ export default class extends Controller {
   }
 
   get ownKnowledgeHtml() {
-    return '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">from model knowledge</div>'
+    // Must stay byte-identical with _message.html.erb's double_check footer:
+    // the post-first-reply Turbo.visit swaps one for the other.
+    return '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">from model knowledge<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">double check</a></span></div>'
+  }
+
+  // The offer on a memory answer: submit a canned verification turn through
+  // the composer path, so it behaves exactly like typed text. Refuses while
+  // a stream is live (it would steer) and when a draft sits in the composer
+  // (never clobber one).
+  doubleCheck(event) {
+    event.preventDefault()
+    const input = this.formTarget.elements.content
+    if (this.currentRequest || input.value.trim()) return
+    input.value = "double check that against sources — anything wrong, anything missing?"
+    this.formTarget.requestSubmit()
+  }
+
+  // The link targets the latest answer by design ("double check that"); a
+  // new turn demotes every older link, so they leave the DOM at stream
+  // start. The server render shows it on the latest memory answer only.
+  clearDoubleChecks() {
+    this.element.querySelectorAll(".double-check-offer").forEach((el) => { el.remove() })
   }
 
   scrollToBottom() {
-    if (this.autoScroll) window.scrollTo({ top: document.documentElement.scrollHeight })
+    if (this.autoScroll) this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight
   }
 }
