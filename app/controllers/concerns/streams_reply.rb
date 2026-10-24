@@ -17,7 +17,16 @@ module StreamsReply
 
   private
 
+  # The "break it down" turn is the calibration signal: the canned text
+  # (Comrade::Enlistee::BREAK_DOWN_TURN) is app-controlled, so matching
+  # on it counts clicks without extra plumbing — and a reader typing it
+  # naturally counts too, which is semantically right.
+  def count_calibration_signal
+    current_enlistee&.count_break_down! if params[:content].to_s.strip == Comrade::Enlistee::BREAK_DOWN_TURN
+  end
+
   def stream_reply(conversation)
+    count_calibration_signal
     set_stream_headers
     # :reek:ControlParameter — the request picks the entry point; that is
     # the controller's job.

@@ -21,8 +21,13 @@ Rails.application.routes.draw do
   end
 
   # Identity: one door, singular resource. new marks the panel seen,
-  # create enlists or claims, destroy steps out to the commune.
-  resource :enlistment, only: %i[new create destroy]
+  # create enlists or claims, update saves the party line, destroy steps
+  # out to the commune.
+  resource :enlistment, only: %i[new create update destroy]
+
+  # Calibration's one quiet offer: create accepts (writes the pref),
+  # destroy declines (never asks again).
+  resource :calibration, only: %i[create destroy]
 
   # Render dynamic PWA files from app/views/pwa/* (remember to link manifest in application.html.erb)
   # get "manifest" => "rails/pwa#manifest", as: :pwa_manifest

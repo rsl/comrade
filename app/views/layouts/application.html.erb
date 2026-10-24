@@ -35,6 +35,7 @@
         </div>
 
         <%= render 'layouts/identity', identity_changed: @identity_changed %>
+        <%= render 'layouts/party_line' %>
 
         <%# Recents carry iOS-style list management: "Edit" flips the list into archive mode — rows grow a minus control. Archiving removes the row in place via Turbo Stream, so edit mode survives multi-archive; only archiving the conversation you're viewing falls back to a redirect. %>
         <section data-controller="sidebar-edit" class="mt-4">

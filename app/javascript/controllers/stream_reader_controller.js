@@ -140,7 +140,7 @@ export default class extends Controller {
   async stream(content, interrupted, answer, { retry }) {
     this.partial = ""
     this.pendingCitations = null
-    this.clearDoubleChecks()
+    this.clearOffers()
     const request = this.currentRequest = new AbortController()
     this.liveAnswer = answer
     this.showLiveDot(answer)
@@ -427,7 +427,11 @@ export default class extends Controller {
       const block = marked.parse(escape(plain), { breaks: true })
       return `<div class="mb-3 last:mb-0">${block}</div>${chips}`
     }).join("")
-    if (!citations.length) answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
+    if (!citations.length) {
+      answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
+    } else {
+      answer.insertAdjacentHTML("beforeend", this.breakDownHtml)
+    }
     this.pendingCitations = null
   }
 
@@ -461,7 +465,14 @@ export default class extends Controller {
   get ownKnowledgeHtml() {
     // Must stay byte-identical with _message.html.erb's double_check footer:
     // the post-first-reply Turbo.visit swaps one for the other.
-    return '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">from model knowledge<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">double check</a></span></div>'
+    return '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">from model knowledge<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">break it down</a></span></div>'
+  }
+
+  // The action line on a search answer — chips carry the sources, the
+  // line carries the action. Byte-identical with _message.html.erb's
+  // break_down branch.
+  get breakDownHtml() {
+    return '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500"><a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">break it down</a></div>'
   }
 
   // The offer on a memory answer: submit a canned verification turn through
@@ -476,11 +487,22 @@ export default class extends Controller {
     this.formTarget.requestSubmit()
   }
 
-  // The link targets the latest answer by design ("double check that"); a
-  // new turn demotes every older link, so they leave the DOM at stream
-  // start. The server render shows it on the latest memory answer only.
-  clearDoubleChecks() {
-    this.element.querySelectorAll(".double-check-offer").forEach((el) => { el.remove() })
+  // The line under the answer, action side: a canned simplification turn,
+  // same composer path. The server counts these — after enough of them
+  // the sidebar quietly offers to make it the default.
+  breakDown(event) {
+    event.preventDefault()
+    const input = this.formTarget.elements.content
+    if (this.currentRequest || input.value.trim()) return
+    input.value = "break that down — plainer, smaller pieces, same ground."
+    this.formTarget.requestSubmit()
+  }
+
+  // The links target the latest answer by design; a new turn demotes every
+  // older link, so they leave the DOM at stream start. The server render
+  // shows them on the latest answer only.
+  clearOffers() {
+    this.element.querySelectorAll(".double-check-offer, .break-down-offer").forEach((el) => { el.remove() })
   }
 
   scrollToBottom() {

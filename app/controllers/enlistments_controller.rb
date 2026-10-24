@@ -22,6 +22,18 @@ class EnlistmentsController < ApplicationController
     redirect_back_or_to root_path
   end
 
+  # Party Line: the reader's own directive line, replacing whatever was
+  # there. A blank save is the reset — the key goes, factory voice rules
+  # that part again.
+  def update
+    line = params[:line].to_s.strip
+    # jsonb row data — string keys are the storage contract.
+    # rubocop:disable-next Style/StringHashKeys
+    prefs = (current_enlistee.prefs || {}).merge('line' => line.presence).compact
+    current_enlistee&.update!(prefs: prefs)
+    redirect_back_or_to root_path
+  end
+
   def destroy
     step_out
     @identity_changed = true

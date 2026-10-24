@@ -11,7 +11,7 @@
       </div>
     <% end %>
     <% grouped_turns(messages).each do |message, tool_notes| %>
-      <%= message_turn(message, tool_notes:, double_check: message.id == double_check_id(messages)) %>
+      <%= message_turn(message, tool_notes:, double_check: message.id == double_check_id(messages), break_down: message.id == break_down_id(messages)) %>
     <% end %>
   <% end %>
   <div class="shrink-0 bg-ground/90 pb-6 pt-2 backdrop-blur">
