@@ -18,6 +18,11 @@ module Comrade
     CUSTOM_PROMPT = Rails.root.join('config/comrade_prompt.custom.md')
 
     MAX_TOOL_ROUNDS = 3
+    # Net::HTTP's 60s default is an IDLE timeout, not a total one — but a
+    # busy model server queues requests without sending a byte, so the
+    # default reads "queued" as "dead" and fails a reply that would have
+    # succeeded. Give the queue room.
+    TIMEOUTS = { read_timeout: 300, open_timeout: 30 }.freeze
 
     # The cap pass gets no tools; left to its own devices the model then
     # emits its next search as fake tool-call text in the answer. This
@@ -265,8 +270,12 @@ module Comrade
       JSON.parse(payload).dig('choices', 0, 'delta')
     end
 
+    # Net::HTTP's 60s default is an IDLE timeout, not a total one — but a busy
+    # model server queues requests without sending a byte, so the default
+    # reads "queued" as "dead" and fails a reply that would have succeeded.
+    # Give the queue room.
     def stream_chunks(request_body, &block)
-      http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https')
+      http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', **TIMEOUTS)
       http.request(post_request(request_body)) do |response|
         ensure_success(response)
         response.read_body(&block)
