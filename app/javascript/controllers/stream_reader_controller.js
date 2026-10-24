@@ -39,6 +39,10 @@ export default class extends Controller {
     // moment there's a draft to send — submitting then steers.
     this.askButton = this.formTarget.querySelector('button[type="submit"]')
     this.formTarget.elements.content.addEventListener("input", () => this.syncAskButton())
+    // A new conversation starts with the composer focused — land and type.
+    // Only the landing grabs focus; opening an old conversation to read it
+    // shouldn't steal focus (or pop the keyboard accessory bar).
+    if (this.freshValue) this.formTarget.elements.content.focus()
     this.element.insertAdjacentHTML("beforeend",
       '<button type="button" data-action="stream-reader#jumpToLatest" class="jump-latest fixed bottom-28 right-64 z-20 hidden cursor-pointer rounded-full bg-soviet/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-soviet/60">↓ latest</button>')
   }
@@ -281,6 +285,16 @@ export default class extends Controller {
     const input = this.formTarget.elements.content
     const busy = this.currentRequest && !input.value.trim()
     this.askButton.textContent = busy ? "…" : "Ask"
+  }
+
+  // A tap on Ask while the composer is focused blurs the textarea first —
+  // and iOS Safari cancels the tap's click across the focus change and the
+  // viewport recalc it triggers (accessory bar hides, shell re-sizes), so
+  // the first tap never submits. Preventing mousedown's default keeps
+  // focus in the composer: no blur, no recalc, the tap completes — and
+  // focus survives sending, so the next message needs no re-tap.
+  holdFocus(event) {
+    event.preventDefault()
   }
 
   // End-of-stream pass for a steered-away answer: same formatting the

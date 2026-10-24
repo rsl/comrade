@@ -17,7 +17,7 @@
   <div class="shrink-0 bg-ground/90 pb-6 pt-2 backdrop-blur">
     <form data-turbo="false" data-stream-reader-target="form" data-action="submit->stream-reader#submit" class="mx-auto flex max-w-3xl items-end px-5">
       <%= tag.textarea nil, name: 'content', rows: 1, required: true, placeholder: messages.any? ? 'Reply…' : 'What do you need, comrade?', 'data-action': 'keydown->stream-reader#keydown', class: 'peer grow resize-none rounded-l-lg bg-neutral-300 px-4 py-3 leading-snug text-neutral-900 placeholder:text-neutral-500 focus:bg-neutral-100 focus:outline-none' %>
-      <button type="submit" class="min-w-[4.5rem] cursor-pointer rounded-r-lg bg-soviet/50 px-4 py-3 font-medium leading-snug text-white peer-focus:bg-soviet/80 hover:bg-soviet">Ask</button>
+      <button type="submit" data-action="mousedown->stream-reader#holdFocus" class="min-w-[4.5rem] cursor-pointer rounded-r-lg bg-soviet/50 px-4 py-3 font-medium leading-snug text-white peer-focus:bg-soviet/80 hover:bg-soviet">Ask</button>
     </form>
   </div>
 <% end %>
