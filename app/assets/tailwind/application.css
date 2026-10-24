@@ -17,3 +17,10 @@
   --color-cream: #cab992;
   --color-cream-bright: #f3e9cf;
 }
+
+/* App shell height tracks the visual viewport (see visual_viewport_boot.js):
+   viewport units can't express "minus keyboard", and a fixed shell sized to
+   the layout viewport ghosts upward when iOS Safari pans on focus. */
+.shell {
+  height: var(--shell-height, 100%);
+}

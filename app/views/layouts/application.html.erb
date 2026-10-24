@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <title><%= content_for(:title) || 'Comrade' %></title>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="viewport" content="width=device-width,initial-scale=1,interactive-widget=resizes-content">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="application-name" content="Comrade">
     <meta name="mobile-web-app-capable" content="yes">
@@ -17,14 +17,18 @@
 
     <%# Restores the saved root font size before first paint (see font_scale_boot.js and the font-sizer controller). %>
     <%= javascript_include_tag 'font_scale_boot' %>
+    <%= javascript_include_tag 'visual_viewport_boot' %>
     <%= stylesheet_link_tag :tailwind, "data-turbo-track": 'reload' %>
     <%= javascript_importmap_tags %>
   </head>
 
-  <%# Layout, desktop mock: one persistent right sidebar carrying all nav — wordmark, new chat, recents, archive, font controls. No top chrome. Phone arrangement comes after the palette is settled. %>
-  <body class="bg-ground text-neutral-200 antialiased">
-    <div class="flex min-h-screen flex-row-reverse">
-      <aside class="sticky top-0 flex h-screen w-60 shrink-0 flex-col bg-ground-raised px-4 py-5">
+  <%# App shell: fixed inset-0 frames — the document never scrolls, so none of
+    the iOS viewport-unit states (URL bar × keyboard × accessory) can produce
+    dead scroll, pan-on-focus, or scroll carry across the post-first-reply
+    Turbo.visit. The transcript panel scrolls internally. (2026-10-24) %>
+  <body class="bg-ground text-neutral-200 antialiased overflow-hidden">
+    <div class="shell fixed left-0 right-0 top-0 flex flex-row-reverse">
+      <aside class="flex h-full w-60 shrink-0 flex-col overflow-y-auto bg-ground-raised px-4 py-5">
         <div class="mb-2 flex items-center justify-between">
           <%= link_to 'Comrade', root_path, class: 'text-lg font-semibold tracking-tight text-gold' %>
           <%= link_to '+ New', root_path, title: 'New conversation', class: 'rounded bg-soviet/20 px-2 py-0.5 text-xs text-neutral-400 hover:text-neutral-100 hover:bg-soviet/50' %>
@@ -59,7 +63,7 @@
         </div>
       </aside>
 
-      <main class="min-w-0 flex-1">
+      <main class="flex h-full min-w-0 flex-1 flex-col">
         <%= yield %>
       </main>
     </div>
