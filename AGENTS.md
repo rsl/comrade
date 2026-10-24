@@ -134,6 +134,11 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
   mid-sentence.
 - Scratch files and scripts go in the app's `tmp/` (gitignored), not
   `/tmp`.
+- Tailwind builds fail with "Cannot find the tailwindcss executable":
+  the global `BUNDLE_FORCE_RUBY_PLATFORM=true` export forces the exe-less
+  ruby-platform gem over the binary one (noted in the 2026-10-22
+  chat-UI handoff). Override per invocation —
+  `BUNDLE_FORCE_RUBY_PLATFORM=false bin/rails tailwindcss:build`.
 - (grows as they're hit — add on discovery, with the date)
 
 ## Working agreement

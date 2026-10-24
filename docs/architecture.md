@@ -34,8 +34,38 @@ A `Conversation` has many `Message`s. A message has:
 - `tool_name` — string, set when the message records a tool call
 - `tool_payload` — jsonb, the tool's arguments and result
 
-Structured data goes in jsonb columns, not new tables. There is no `User`
-model and no auth: Comrade is single-user and localhost-bound by design.
+Structured data goes in jsonb columns, not new tables.
+
+## Comrades (designed 2026-10-24, not built yet)
+
+The household identity model. Supersedes "single-user, no User model"
+out loud — the product needs an identity row, and it carries no auth:
+
+- **`comrades` via `Comrade::Enlistee`** (the `Comrade::` namespace
+  belongs to the services, so the model nests): `token`, `name`
+  (string, `null: false`, unique), `prefs: jsonb`, `calibration: jsonb`,
+  timestamps. Authless — the token remembers, nothing verifies. The
+  token cookie is presence: httpOnly, long Max-Age, untouched by
+  JavaScript (also the Safari-ITP answer).
+- **`conversations.comrade_id`** — nullable, and null IS the commune:
+  the shared anon space you're in whenever the request carries no
+  token. Scoping is `where(comrade_id: current_enlistee&.id)` — no
+  special case, and only one commune is possible because nil is nil.
+- **Name is the address.** Enlistment and pairing are one flow: type a
+  name — a new one enlists, an existing one claims. Display-only (the
+  sidebar chip); it never enters a prompt. Names are permanent.
+- **`prefs` vs `calibration`.** Prefs are what the model reads —
+  instructions, written only by confirmed nudges or Party Line,
+  injected as a second system message after the base prompt.
+  Calibration is what only code reads — usage counters and the nudge
+  ledger. Two blobs, so telemetry can never leak into the prompt.
+- **Behavioral calibration.** "Break it down" on the answer footer
+  revises an answer plainer; repeat use drives a one-time offer to
+  make it the default. Counters never enter the prompt.
+- **Voice constitution.** The base prompt gains the plain-voice rules
+  (minimal jargon, no zest, stop when the thing is said) and the
+  non-second-guessing clause: stated preferences are instructions,
+  never weighed against inferred identity.
 
 ## Configuration
 
