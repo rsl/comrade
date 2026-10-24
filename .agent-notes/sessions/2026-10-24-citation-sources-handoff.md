@@ -1,20 +1,19 @@
 # Session handoff — 2026-10-24, citation source chain + reply-loop numbering
 
-**State: Sat 2026-10-24 morning. Branch `rsl-citation-sources` holds 8
-commits (citation chain + UI shell rework), unpushed — rsl holds the
-push until the last UI issues settle. Working tree clean, all gates
-green. Verified working on iPad: citation chain (real titled sources,
-no fabricated urls), fixed shell layout, keyboard focus (scroll pinned,
-shell tracks visualViewport), fresh-conversation swap, working title,
-sidebar. STILL OPEN, found in live use after the matrix passed: in the
-iPadOS minimized-keyboard state (accessory bar visible, software
-keyboard dismissed) the composer slides down under the floating
-accessory bar — suspected `visualViewport.height` mismatch or a missed
-resize event on that transition, unmeasured. Also a cosmetic stray
-caret artifact rendering at stale coordinates across layout shifts.
-Next act: reproduce the minimized-keyboard state with the ?vvdebug
-readout (see UI session section for the protocol and past numbers),
-fix from the measured values, then push + PR. The inherited handoff
+**State: Sat 2026-10-24, midday. Branch `rsl-citation-sources` holds the
+citation chain + UI shell rework, unpushed — rsl holds the push. Working
+tree clean, all gates green. Verified working on iPad: citation chain
+(real titled sources, no fabricated urls), fixed shell layout, keyboard
+focus (scroll pinned, shell tracks visualViewport), fresh-conversation
+swap, working title, sidebar. The keyboard-bug chase is CLOSED and
+measured (see the UI session section): the "composer under accessory
+bar" overlap was the first frame of iPadOS's floating keyboard
+accessory bar appearing — a sub-second transient, self-healing, both
+steady states verified correct with the ?vvdebug readout. rsl uses a
+Magic Keyboard, so the software keyboard never opens; the 69pt
+reservation is the accessory bar alone. Remaining open items: push +
+PR (rsl's call), dead-code riders, stray caret artifact (cosmetic),
+specs when shapes settle. The inherited handoff
 (`2026-10-23-quality-review-erb-rewrite`) is archived.**
 
 ## Built (committed on `rsl-citation-sources`)
@@ -103,35 +102,47 @@ The vvdebug protocol that cracked the keyboard bug: a readout in
 visual_viewport_boot.js gated behind `?vvdebug` printed `vv.height /
 offsetTop / pageTop`, `innerHeight`, `scrollY`, and the shell var live
 (re-attaching itself on `turbo:load`, since the visit replaces the
-body). It was removed before committing — resurrect it from git history
-(the commit that added the pin, or this file's numbers) when debugging
-the minimized-keyboard state. The win came from numbers, not pixels:
-each screenshot guess cost a round-trip; one readout capture ended it.
+body). It never shipped; the exact block is parked in
+`tmp/vvdebug-snippet.js` (gitignored) with paste-in instructions and
+the reference numbers — resurrect it from there when debugging any
+viewport state. The win came from numbers, not pixels: each screenshot
+guess cost a round-trip; one readout capture ended it.
 
-Interpretation trail for the open bug, from the pre-fix screenshot
-sequence (unconfirmed — the vvdebug capture supersedes it): the working
-theory for the composer-under-accessory overlap is the iPadOS
-minimized-keyboard transition — software keyboard dismissed, floating
-accessory bar remaining — where either `visualViewport.height` reports
-more than the accessory actually covers or the resize event doesn't
-fire on that transition. Shot pairs read as: keyboard fully open
-(composer high, clear gap), then typing state (composer slid down,
-bottom edge under the accessory). Ruled out along the way: window
-scroll (pinned at 0 by the boot script), visual-viewport pan
-(`offsetTop` stayed 0 in every capture), and shell height mismatch in
-the fully-open state (shell tracked `vv.height` exactly). A stray text
-caret rendering at stale coordinates across layout shifts appeared in
-several captures at varying positions — logged as cosmetic, watch it
-after the keyboard-state fix lands.
+The keyboard-bug close-out, measured (rsl on iPad Safari 26 with a
+Magic Keyboard attached): the floating pill at the bottom (mic, dismiss
+chevron) is the software keyboard's accessory bar — the software
+keyboard itself never opens with the Magic Keyboard attached, so every
+state is full-height or minus-69pt, nothing in between. Steady states,
+both verified correct by the readout:
+
+- Field focused, accessory bar hidden: `vv.height == innerHeight ==
+  shell == 875`, `scrollY=0` — shell fills the page, composer at the
+  bottom edge.
+- Field focused, accessory bar up: `vv.height=806, shell=806px,
+  scrollY=0` — shell tracks the reservation exactly, composer sits
+  clear above the floating bar.
+
+The reported overlap (composer's bottom edge under the bar, e.g. the
+"he is" typing capture) is the bar's APPEAR transition: iPadOS draws
+the bar a beat before firing the viewport resize, so the shell lags
+one frame and then catches up — a sub-second, self-healing transient.
+Nothing page-side can detect the bar directly, so there is no signal
+to fix it from; the settled state is correct, which the readout
+proved. Ruled out along the way: window scroll (pinned at 0), visual
+viewport pan (`offsetTop` stayed 0 in every capture), and a steady
+`vv.height` lie (the value always matched the visible state once
+settled). A stray text caret rendering at stale coordinates across
+layout shifts appeared in several captures at varying positions —
+cosmetic, watch only.
 
 ## Open items → registry
 
-- Minimized-keyboard overlap (above) → next session's first act; then
-  push `rsl-citation-sources` + open the PR (rsl holds the push).
+- Keyboard/accessory-bar bug → CLOSED, measured (see UI session
+  section). Remaining action on the branch: push `rsl-citation-sources`
+  + open the PR — rsl holds the push.
 - Dead code riders (`marker_index`, `sawCitations`) → still in
   `roadmap.md` (Open questions).
-- Stray caret artifact (cosmetic, iOS) → watch it; fix only if it
-  survives the keyboard-state fix.
+- Stray caret artifact (cosmetic, iOS) → watch it in normal use.
 - Specs for the citation chain and the shell rework → land when the
   shapes settle, per repo convention.
 - The working tree's modified files → committed on
