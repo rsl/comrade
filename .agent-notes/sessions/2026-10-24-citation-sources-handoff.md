@@ -108,6 +108,22 @@ body). It was removed before committing — resurrect it from git history
 the minimized-keyboard state. The win came from numbers, not pixels:
 each screenshot guess cost a round-trip; one readout capture ended it.
 
+Interpretation trail for the open bug, from the pre-fix screenshot
+sequence (unconfirmed — the vvdebug capture supersedes it): the working
+theory for the composer-under-accessory overlap is the iPadOS
+minimized-keyboard transition — software keyboard dismissed, floating
+accessory bar remaining — where either `visualViewport.height` reports
+more than the accessory actually covers or the resize event doesn't
+fire on that transition. Shot pairs read as: keyboard fully open
+(composer high, clear gap), then typing state (composer slid down,
+bottom edge under the accessory). Ruled out along the way: window
+scroll (pinned at 0 by the boot script), visual-viewport pan
+(`offsetTop` stayed 0 in every capture), and shell height mismatch in
+the fully-open state (shell tracked `vv.height` exactly). A stray text
+caret rendering at stale coordinates across layout shifts appeared in
+several captures at varying positions — logged as cosmetic, watch it
+after the keyboard-state fix lands.
+
 ## Open items → registry
 
 - Minimized-keyboard overlap (above) → next session's first act; then
