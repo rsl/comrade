@@ -80,7 +80,7 @@ Comrade needs three things running nearby:
    ```bash
    export COMRADE_LLM_BASE_URL="http://127.0.0.1:8888/v1"
    export COMRADE_LLM_API_KEY="sk-..."
-   export COMRADE_LLM_MODEL="GLM-5.3-Flash-oQ6e-mtp"
+   export COMRADE_LLM_MODEL="GLM-5.3-Flash-oQ4e-mtp"
    ```
 2. **SearXNG** for search — a bare local install is fine (see
    `docs/searxng.md` for a launchd setup).
