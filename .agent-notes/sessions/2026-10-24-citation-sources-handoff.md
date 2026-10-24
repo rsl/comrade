@@ -10,8 +10,9 @@ section below); the duplicate-transcript bug was found, root-caused,
 and fixed the same day; the Action Cable streaming move has a transport
 design in `docs/architecture.md` under the roadmap's resumability
 decision. Every open item lives in the roadmap registry. Next
-session's opening act: consume this handoff, verify the registry,
-archive it.**
+session's opening act: consume this handoff, verify the registry —
+archiving happens at close-out, after this handoff's successor is
+written.**
 
 ## Built (committed on `rsl-citation-sources`)
 

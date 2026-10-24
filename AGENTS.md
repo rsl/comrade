@@ -154,6 +154,12 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
   PR — granular commits, few pushes — and merge after the maintainer has
   seen it. Agents never merge — merging is the maintainer's alone, even
   after approval of everything else.
+- **Doc updates ride with the work.** A handoff or PR whose work changes
+  or contradicts what any doc says (architecture.md, READMEs, the
+  session-doc flow) is incomplete until that doc is updated in the same
+  act — including live docs still stating the old rule (e.g. a handoff
+  header repeating a superseded lifecycle). Never leave the rule in one
+  doc and its contradiction in another.
 - **Before the first edit of a task, state the plan** — files, order, what
   changes — and wait for a go-ahead.
 - **Read before edit.** The edit tool matches byte-for-byte; read the
