@@ -1,13 +1,21 @@
 # Session handoff — 2026-10-24, citation source chain + reply-loop numbering
 
-**State: PR #7 merged to `main` (d29cb29) in the prior session; this
-session reproduced, root-caused, and fixed the citations-shrink bug,
-committed everything on branch `rsl-citation-sources` (chip-title fix,
-numbered-source menu + fix, README model-name correction, this handoff),
-and left the branch for the maintainer's PR/merge. All gates clean.
-The inherited handoff
-(`2026-10-23-quality-review-erb-rewrite`) is superseded — PR #7 merged —
-and archived.**
+**State: Sat 2026-10-24 morning. Branch `rsl-citation-sources` holds 8
+commits (citation chain + UI shell rework), unpushed — rsl holds the
+push until the last UI issues settle. Working tree clean, all gates
+green. Verified working on iPad: citation chain (real titled sources,
+no fabricated urls), fixed shell layout, keyboard focus (scroll pinned,
+shell tracks visualViewport), fresh-conversation swap, working title,
+sidebar. STILL OPEN, found in live use after the matrix passed: in the
+iPadOS minimized-keyboard state (accessory bar visible, software
+keyboard dismissed) the composer slides down under the floating
+accessory bar — suspected `visualViewport.height` mismatch or a missed
+resize event on that transition, unmeasured. Also a cosmetic stray
+caret artifact rendering at stale coordinates across layout shifts.
+Next act: reproduce the minimized-keyboard state with the ?vvdebug
+readout (see UI session section for the protocol and past numbers),
+fix from the measured values, then push + PR. The inherited handoff
+(`2026-10-23-quality-review-erb-rewrite`) is archived.**
 
 ## Built (committed on `rsl-citation-sources`)
 
@@ -91,12 +99,25 @@ Turbo.visit swap stays invisible via the reserved title row + pixel
 identical renders; the row now fills with the sent question as the
 working title (truncated exactly like `Conversation.start!`).
 
+The vvdebug protocol that cracked the keyboard bug: a readout in
+visual_viewport_boot.js gated behind `?vvdebug` printed `vv.height /
+offsetTop / pageTop`, `innerHeight`, `scrollY`, and the shell var live
+(re-attaching itself on `turbo:load`, since the visit replaces the
+body). It was removed before committing — resurrect it from git history
+(the commit that added the pin, or this file's numbers) when debugging
+the minimized-keyboard state. The win came from numbers, not pixels:
+each screenshot guess cost a round-trip; one readout capture ended it.
+
 ## Open items → registry
 
-- Citations-shrink bug → SOLVED this session (see above); struck from
-  `roadmap.md`.
+- Minimized-keyboard overlap (above) → next session's first act; then
+  push `rsl-citation-sources` + open the PR (rsl holds the push).
 - Dead code riders (`marker_index`, `sawCitations`) → still in
   `roadmap.md` (Open questions).
+- Stray caret artifact (cosmetic, iOS) → watch it; fix only if it
+  survives the keyboard-state fix.
+- Specs for the citation chain and the shell rework → land when the
+  shapes settle, per repo convention.
 - The working tree's modified files → committed on
   `rsl-citation-sources`; branch awaits the maintainer's PR/merge.
 
