@@ -105,6 +105,10 @@ module Comrade
 
     private
 
+    # The stream sink: everything the answer pass emits crosses this. Nil
+    # until the enumerator starts — the generator runs only inside it.
+    attr_reader :yielder
+
     def stream_into
       citations = []
       MAX_TOOL_ROUNDS.times do
@@ -176,7 +180,7 @@ module Comrade
 
     def absorb_text(text, content)
       content << text
-      @yielder << { type: 'delta', text: text }
+      yielder << { type: 'delta', text: text }
     end
 
     def absorb_tool_call(tool_calls, fragment)
@@ -202,7 +206,7 @@ module Comrade
     end
 
     def execute_tool(name, arguments, offset)
-      @yielder << { type: 'tool', name: name }.merge(arguments)
+      yielder << { type: 'tool', name: name }.merge(arguments)
       dispatch_tool(name, arguments, offset)
     rescue JSON::ParserError
       ['Invalid tool arguments', []]
@@ -244,7 +248,7 @@ module Comrade
     def persist_answer(content, citations)
       citations = citations.uniq { |citation| citation[:url] }.presence
       append_message(role: 'assistant', content: content, citations: citations)
-      @yielder << { type: 'citations', citations: citations || [] } if citations
+      yielder << { type: 'citations', citations: citations || [] } if citations
     end
 
     # read_body yields raw TCP chunks whose boundaries ignore SSE event
