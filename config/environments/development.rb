@@ -9,6 +9,10 @@ Rails.application.configure do
   # as Rails defaults.
   config.hosts << ENV['COMRADE_HOST'] if ENV['COMRADE_HOST'].present?
 
+  # Tailnet name (split DNS + Caddy on the Mac Studio): reached from any
+  # device in the tailnet over HTTPS, no /etc/hosts needed.
+  config.hosts << 'comrade.luckysneaks.dev'
+
   # Make code changes take effect immediately without server restart.
   config.enable_reloading = true
 
