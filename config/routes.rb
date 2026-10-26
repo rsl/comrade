@@ -20,10 +20,10 @@ Rails.application.routes.draw do
     resources :messages, only: [:create]
   end
 
-  # Identity: one door, singular resource. new marks the panel seen,
-  # create enlists or claims, update saves the party line, destroy steps
-  # out to the commune.
-  resource :enlistment, only: %i[new create update destroy]
+  # Identity: one door, singular resource. create enlists or claims (the
+  # gate's "stay in the commune" is client-side — no route, no memory),
+  # update saves the party line, destroy steps out to the commune.
+  resource :enlistment, only: %i[create update destroy]
 
   # Calibration's one quiet offer: create accepts (writes the pref),
   # destroy declines (never asks again).

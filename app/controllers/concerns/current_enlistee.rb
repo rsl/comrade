@@ -5,10 +5,9 @@ module CurrentEnlistee
   extend ActiveSupport::Concern
 
   TOKEN_COOKIE = 'comrade_token'
-  SEEN_COOKIE = 'comrade_seen'
 
   included do
-    helper_method :current_enlistee, :enlistee_seen?, :identity_chip
+    helper_method :current_enlistee, :identity_chip
   end
 
   def current_enlistee
@@ -32,16 +31,6 @@ expires: 400.days,
   def step_out
     cookies.delete(TOKEN_COOKIE)
     @current_enlistee = nil
-  end
-
-  # The enlistment panel is a first-run door, shown once; the sidebar
-  # keeps it reachable forever after.
-  def enlistee_seen?
-    cookies[SEEN_COOKIE].present?
-  end
-
-  def mark_enlistment_seen
-    cookies[SEEN_COOKIE] = { value: '1', expires: 400.days, httponly: true }
   end
 
   # What the chip says: the name, or the commune when anon. The identity

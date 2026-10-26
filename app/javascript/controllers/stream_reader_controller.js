@@ -12,8 +12,8 @@ import { marked } from "marked"
 // names it, later exchanges post to its messages endpoint, and the first
 // completed stream visits the conversation's permanent address.
 export default class extends Controller {
-  static targets = ["form", "transcript", "title"]
-  static values = { endpoint: String, fresh: Boolean }
+  static targets = ["form", "transcript", "title", "gate", "greeting"]
+  static values = { endpoint: String, fresh: Boolean, keepSimple: Boolean }
 
   // The in-flight request, abortable, and the partial answer text it has
   // shown so far — the steer payload when a new message interrupts it.
@@ -41,8 +41,9 @@ export default class extends Controller {
     this.formTarget.elements.content.addEventListener("input", () => this.syncAskButton())
     // A new conversation starts with the composer focused — land and type.
     // Only the landing grabs focus; opening an old conversation to read it
-    // shouldn't steal focus (or pop the keyboard accessory bar).
-    if (this.freshValue) this.formTarget.elements.content.focus()
+    // shouldn't steal focus (or pop the keyboard accessory bar). The gate
+    // holds the composer hidden, so nothing to focus until it's revealed.
+    if (this.freshValue && !this.formTarget.classList.contains("hidden")) this.formTarget.elements.content.focus()
     this.element.insertAdjacentHTML("beforeend",
       '<button type="button" data-action="stream-reader#jumpToLatest" class="jump-latest fixed bottom-28 right-64 z-20 hidden cursor-pointer rounded-full bg-soviet/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-soviet/60">↓ latest</button>')
   }
@@ -237,10 +238,9 @@ export default class extends Controller {
 
   appendExchange(content) {
     this.clearLiveDots()
-    // First exchange: the centered landing gives way to a top-aligned
-    // transcript, deliberately at the moment you act — and the greeting
-    // goes with your message, not with the reply.
-    this.transcriptTarget.classList.remove("justify-center")
+    // First exchange: the greeting goes with your message, not with the
+    // reply — the transcript top-aligns from here (empty-state centering
+    // is my-auto on the card, which is gone or hidden by now).
     this.transcriptTarget.querySelector(".greeting")?.remove()
     // You just sent: the reply deserves an audience. Re-pin the reader.
     this.autoScroll = true
@@ -465,14 +465,41 @@ export default class extends Controller {
   get ownKnowledgeHtml() {
     // Must stay byte-identical with _message.html.erb's double_check footer:
     // the post-first-reply Turbo.visit swaps one for the other.
-    return '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">from model knowledge<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">break it down</a></span></div>'
+    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">From model knowledge<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
+    if (this.keepSimpleValue) html += this.keepSimpleHtml
+    return html + '</div>'
   }
 
   // The action line on a search answer — chips carry the sources, the
   // line carries the action. Byte-identical with _message.html.erb's
   // break_down branch.
   get breakDownHtml() {
-    return '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500"><a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">break it down</a></div>'
+    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500"><a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
+    if (this.keepSimpleValue) html += this.keepSimpleHtml
+    return html + '</div>'
+  }
+
+  // The calibration offer, when standing: rides the latest answer's
+  // action line in both renders. Yes/no post and delete through Turbo's
+  // method delegation, so injected anchors behave like server-rendered
+  // ones. Byte-identical with _message.html.erb's keep-simple span.
+  get keepSimpleHtml() {
+    return '<span class="keep-simple-offer"> · Simpler by default? <a href="/calibration" data-turbo-method="post" class="cursor-pointer underline hover:text-neutral-300">Yes</a> <a href="/calibration" data-turbo-method="delete" class="cursor-pointer text-neutral-500 hover:text-neutral-300">No thanks</a></span>'
+  }
+
+  // "Stay in the commune": the gate's punt is a client-side reveal — the
+  // composer and the sidebar were always here, just held back until the
+  // reader chose. No cookie, no memory: a fresh load asks again. A
+  // handle is the only permanent way out of the gate.
+  stayInCommune(event) {
+    event.preventDefault()
+    this.gateTarget.hidden = true
+    this.greetingTarget.hidden = false
+    this.formTarget.classList.remove("hidden")
+    document.querySelector("[data-gate-sidebar]")?.classList.remove("hidden")
+    // The ☰ carries the same gated-hidden as its sidebar and rides along.
+    document.querySelector("[data-sidebar-drawer-target='toggle']")?.classList.remove("hidden")
+    this.formTarget.elements.content.focus()
   }
 
   // The offer on a memory answer: submit a canned verification turn through
@@ -502,7 +529,7 @@ export default class extends Controller {
   // older link, so they leave the DOM at stream start. The server render
   // shows them on the latest answer only.
   clearOffers() {
-    this.element.querySelectorAll(".double-check-offer, .break-down-offer").forEach((el) => { el.remove() })
+    this.element.querySelectorAll(".double-check-offer, .break-down-offer, .keep-simple-offer").forEach((el) => { el.remove() })
   }
 
   scrollToBottom() {

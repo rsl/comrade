@@ -24,7 +24,7 @@ export default class extends Controller {
       'bg-soviet px-4 py-2 text-sm text-neutral-100',
     ].join(' ')
     const text = document.createElement('span')
-    text.textContent = `now asking as ${ current } (was ${ previous }) — not you? step out in the sidebar`
+    text.textContent = `now ${ current } (was ${ previous }) — not you? Step out in the sidebar`
     const dismiss = document.createElement('button')
     dismiss.type = 'button'
     dismiss.textContent = '×'

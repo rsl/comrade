@@ -2,12 +2,6 @@
 # a name; a new one joins, an existing one is claimed. Stepping out
 # clears presence only; the row and its conversations keep existing.
 class EnlistmentsController < ApplicationController
-  # First-run dismiss: the panel has been seen; the sidebar door remains.
-  def new
-    mark_enlistment_seen
-    redirect_back_or_to root_path
-  end
-
   def create
     name = params[:name].to_s.strip
     if name.present?
