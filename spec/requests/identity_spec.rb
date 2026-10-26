@@ -16,7 +16,10 @@ RSpec.describe 'Identity and scoping', type: :request do
   end
 
   def chip
-    response.body[/asking as ([^<]+)/, 1]
+    # The chip span carries the name (or "the commune") with the full
+    # value mirrored into its aria-label — scoped by its truncate class,
+    # since other aria-labels (font sizer) live on the page.
+    response.body[/class="truncate text-sm text-neutral-300" aria-label="([^"]+)"/, 1]
   end
 
   def cookie_token
@@ -29,7 +32,7 @@ RSpec.describe 'Identity and scoping', type: :request do
     it 'creates a comrade and remembers presence' do
       enlist 'rsl'
 
-      expect(response.body).to include('asking as rsl')
+      expect(chip).to eq('rsl')
       expect(cookie_token).to be_present
       expect(Comrade::Enlistee.find_by(token: cookie_token).name).to eq('rsl')
     end
@@ -117,16 +120,13 @@ RSpec.describe 'Identity and scoping', type: :request do
     end
   end
 
-  describe 'the first-run panel' do
-    it 'shows once, then the skip keeps it away while the door remains' do
+  describe 'the enlist gate' do
+    it 'asks on every fresh load — no remembered dismissal' do
       get '/'
-      expect(response.body).to include('not enlisting today')
+      expect(response.body).to include('Stay in the commune')
 
-      get '/enlistment/new'
-      follow_redirect!
-
-      expect(response.body).not_to include('not enlisting today')
-      expect(response.body).to include('enlist')
+      get '/'
+      expect(response.body).to include('Stay in the commune')
     end
   end
 end

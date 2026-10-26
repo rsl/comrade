@@ -33,31 +33,40 @@ RSpec.describe 'Calibration and party line', type: :request do
   end
 
   describe 'the one quiet offer' do
-    it 'stays quiet below the threshold' do
+    # The offer lives under the latest answer, so every assertion needs a
+    # conversation page carrying one.
+    def conversation_with_answer
       enlist
-      rsl = Comrade::Enlistee.find_by(name: 'rsl')
-      rsl.update!(calibration: { 'break_down' => Comrade::Enlistee::NUDGE_THRESHOLD - 1 })
+      conversation = Conversation.create!(comrade: Comrade::Enlistee.find_by(name: 'rsl'))
+      conversation.messages.create!(role: 'assistant', content: 'an answer worth simplifying')
+      conversation
+    end
 
-      get '/'
-      expect(response.body).not_to include('keep answers simpler by default?')
+    it 'stays quiet below the threshold' do
+      conversation = conversation_with_answer
+      Comrade::Enlistee.find_by(name: 'rsl')
+        .update!(calibration: { 'break_down' => Comrade::Enlistee::NUDGE_THRESHOLD - 1 })
+
+      get "/conversations/#{conversation.id}"
+      expect(response.body).not_to include('Simpler by default?')
     end
 
     it 'offers once at the threshold, then never again when ignored' do
-      enlist
+      conversation = conversation_with_answer
       rsl = Comrade::Enlistee.find_by(name: 'rsl')
       rsl.update!(calibration: { 'break_down' => Comrade::Enlistee::NUDGE_THRESHOLD })
 
-      get '/'
-      expect(response.body).to include('keep answers simpler by default?')
+      get "/conversations/#{conversation.id}"
+      expect(response.body).to include('Simpler by default?')
 
       delete '/calibration'
-      get '/'
-      expect(response.body).not_to include('keep answers simpler by default?')
+      get "/conversations/#{conversation.id}"
+      expect(response.body).not_to include('Simpler by default?')
       expect(rsl.reload.prefs).to be_blank
     end
 
     it 'accepting writes the pref the injection reads and stops the offer' do
-      enlist
+      conversation = conversation_with_answer
       rsl = Comrade::Enlistee.find_by(name: 'rsl')
       rsl.update!(calibration: { 'break_down' => Comrade::Enlistee::NUDGE_THRESHOLD })
 
@@ -66,8 +75,8 @@ RSpec.describe 'Calibration and party line', type: :request do
       expect(rsl.reload.prefs['keep_simple']).to eq(Comrade::Enlistee::KEEP_SIMPLE_LINE)
       expect(rsl.calibration['break_down']).to eq(0)
 
-      get '/'
-      expect(response.body).not_to include('keep answers simpler by default?')
+      get "/conversations/#{conversation.id}"
+      expect(response.body).not_to include('Simpler by default?')
     end
   end
 
