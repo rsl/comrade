@@ -10,7 +10,7 @@
       <div class="mt-2 text-xs text-neutral-400">
         keep answers simpler by default?
         <%= link_to 'yes', calibration_path, data: { turbo_method: :post }, class: 'cursor-pointer underline hover:text-neutral-200' %>
-        <%= link_to 'not now', calibration_path, data: { turbo_method: :delete }, class: 'cursor-pointer text-neutral-500 hover:text-neutral-200' %>
+        <%= link_to 'no thanks', calibration_path, data: { turbo_method: :delete }, class: 'cursor-pointer text-neutral-500 hover:text-neutral-200' %>
       </div>
     <% end %>
     <%= form_with url: enlistment_path, method: :patch, class: 'mt-2' do %>
