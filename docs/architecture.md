@@ -53,7 +53,11 @@ out loud — the product needs an identity row, and it carries no auth:
   special case, and only one commune is possible because nil is nil.
 - **Name is the address.** Enlistment and pairing are one flow: type a
   name — a new one enlists, an existing one claims. Display-only (the
-  sidebar chip); it never enters a prompt. Names are permanent.
+  sidebar chip); it never enters a prompt. Names are permanent. The ask
+  lives in the main window: a tokenless browser that hasn't punted this
+  session gets the enlist gate where the composer would be — punt opens
+  the commune for the session, enlist is the only permanent way out —
+  and the sidebar keeps a collapsed door for claiming later.
 - **`prefs` vs `calibration`.** Prefs are what the model reads —
   instructions, written only by confirmed nudges or Party Line,
   injected as a second system message after the base prompt.
