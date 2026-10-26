@@ -1,14 +1,18 @@
 # Session handoff — 2026-10-26, the commit close-out
 
 **State: Mon 2026-10-26. Branch `rsl-onboarding-enlistment` is committed
-and pushed — 13 commits, tip `1baea54` — and the PR to `main` is open;
-merging is the maintainer's. The whole 2026-10-24/25 UI arc landed in
-`9d1fd57` (enlist gate, phone drawer + swipe, identity/party-line
-restructure, calibration offer in the answer footer, copy sweep), spec
-updates in `c224a09`, docs in `1baea54`. The two decline-copy commits
-squashed into `c0f7c6f` before pushing. Gates: rubocop, reek, herb clean
-via `bin/quality`; 20 specs green. Real-device verification is still the
-gate before merge.**
+and pushed — 15 commits, tip `dc150be`, rebased onto `main` after PRs
+#12/#13 merged — and the PR (#11) is open; merging is the maintainer's.
+The whole 2026-10-24/25 UI arc landed in `d0e32ec` (enlist gate, phone
+drawer + swipe, identity/party-line restructure, calibration offer in
+the answer footer, copy sweep), spec updates in `f667743`, docs in
+`108e87a`. The two decline-copy commits squashed into `7d7bf85` before
+pushing. Gates: rubocop, reek, herb clean via `bin/quality`; 20 specs
+green. Real-device verification is still the gate before merge.**
+
+> Shas here were rewritten by the post-push rebase onto main; the
+> originals are in git's reflog only. The pre-rebase tip was `6dd7552`,
+> with `9d1fd57`/`c224a09`/`1baea54` beneath it.
 
 ## What this session did
 
