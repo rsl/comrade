@@ -39,7 +39,9 @@ citations. AGPL-3.0. Personal tool, built public-first.
   `config/environments/development.rb` — named hosts isolate cookies
   between the fleet's apps, which all share the localhost jar. Unset,
   localhost and IP access work as Rails defaults.
-  Browse at `http://comrade.local:1917`.
+  Browse at `http://comrade.local:1917` locally, or — from any tailnet
+  device — `https://comrade.luckysneaks.dev` (no port; split DNS + Caddy
+  on this machine, runbook in `~/dev/luckysneaks-dev/`; also safelisted).
 
 ## Session docs
 

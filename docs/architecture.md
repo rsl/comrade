@@ -56,6 +56,11 @@ Plus two dev-only conveniences, both env-driven and unread in production:
   the development config so HostAuthorization accepts it. Named hosts
   isolate cookies between the fleet's apps, which all share the localhost
   jar; point the name at 127.0.0.1 in /etc/hosts.
+- `comrade.luckysneaks.dev` — the tailnet name, also safelisted. Split DNS
+  resolves it (via CoreDNS on the Mac Studio) to the Studio's tailnet IP
+  from any fleet device; Caddy terminates a wildcard cert and proxies to
+  127.0.0.1:1917. No port, no /etc/hosts, works off-home. Setup and
+  runbook: `~/dev/luckysneaks-dev/`.
 
 Nothing in the code knows a provider's name. The model endpoint is
 interchangeable by construction.
