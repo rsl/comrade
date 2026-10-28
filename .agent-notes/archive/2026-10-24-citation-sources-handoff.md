@@ -1,5 +1,13 @@
 # Session handoff — 2026-10-24, citation source chain + reply-loop numbering
 
+> Archived 2026-10-24 by the identity session. Successor:
+> `../sessions/2026-10-24-identity-commune-voice-handoff.md`. Proved
+> wrong in flight: this header's "archive it" instruction — superseded
+> by the archive-when-superseded flow (corrected in place at 4f803b9
+> before this move). The identity work it pointed at as future
+> (`rsl-onboarding-enlistment`) is built: slices 1–3 landed, 10 commits,
+> 20 specs green.
+
 **State: Sat 2026-10-24, late. Session complete. Branch
 `rsl-citation-sources` holds 17 commits — the citation chain, the iOS
 fixed-shell rework, the duplicate-transcript fix, the double-check
@@ -10,8 +18,9 @@ section below); the duplicate-transcript bug was found, root-caused,
 and fixed the same day; the Action Cable streaming move has a transport
 design in `docs/architecture.md` under the roadmap's resumability
 decision. Every open item lives in the roadmap registry. Next
-session's opening act: consume this handoff, verify the registry,
-archive it.**
+session's opening act: consume this handoff, verify the registry —
+archiving happens at close-out, after this handoff's successor is
+written.**
 
 ## Built (committed on `rsl-citation-sources`)
 

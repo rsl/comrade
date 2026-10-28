@@ -4,27 +4,27 @@ class ConversationsController < ApplicationController
   def index
     @archived = params[:archived].present?
     @conversations = if @archived
-      Conversation.archived.order(:archived_at)
+      Conversation.archived.for_enlistee(current_enlistee).order(:archived_at)
     else
-      Conversation.live.order(id: :desc).limit(20)
+      Conversation.live.for_enlistee(current_enlistee).order(id: :desc).limit(20)
     end
   end
 
   # The archive listing — read-only titles, the only door to destroy.
   def archived
     @archived = true
-    @conversations = Conversation.archived.order(:archived_at)
+    @conversations = Conversation.archived.for_enlistee(current_enlistee).order(:archived_at)
   end
 
   def show
-    @conversation = Conversation.find(params[:id])
+    @conversation = scoped_conversations.find(params[:id])
   end
 
   # Archive: remove the sidebar row in place so edit mode survives
   # multi-archive. If the archived conversation is the one on screen (or the
   # client doesn't speak Turbo Stream), fall back to a redirect.
   def archive
-    conversation = Conversation.find(params[:id])
+    conversation = scoped_conversations.find(params[:id])
     conversation.archive
     if remove_row_in_place?(conversation)
       render turbo_stream: turbo_stream.remove(conversation)
@@ -34,14 +34,14 @@ class ConversationsController < ApplicationController
   end
 
   def unarchive
-    Conversation.find(params[:id]).resurrect
+    scoped_conversations.find(params[:id]).resurrect
     redirect_back_or_to root_path
   end
 
   # Destroyed for real: messages cascade with it. Only reachable for
   # archived conversations — destruction is always the second step.
   def destroy
-    conversation = Conversation.archived.find(params[:id])
+    conversation = Conversation.archived.for_enlistee(current_enlistee).find(params[:id])
     conversation.destroy!
     redirect_to archived_conversations_path
   end
@@ -49,9 +49,10 @@ class ConversationsController < ApplicationController
   # Creates the conversation (title derived from the first message) and
   # streams the first reply: 201 with Location and X-Conversation-Id
   # headers, body being the SSE reply stream — one roundtrip for the
-  # first exchange.
+  # first exchange. The owner is stamped from presence: nil on the
+  # commune, so anon asks land in the shared stream.
   def create
-    conversation = Conversation.start!(content: params.require(:content))
+    conversation = Conversation.start!(content: params.require(:content), enlistee: current_enlistee)
     response.status = :created
     response.headers['Location'] = conversation_url(conversation)
     response.headers['X-Conversation-Id'] = conversation.id.to_s
@@ -69,5 +70,9 @@ class ConversationsController < ApplicationController
 
   def viewing_conversation?(conversation)
     request.referer && URI.parse(request.referer).path == conversation_path(conversation)
+  end
+
+  def scoped_conversations
+    Conversation.for_enlistee(current_enlistee)
   end
 end

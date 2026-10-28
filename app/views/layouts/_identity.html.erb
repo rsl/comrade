@@ -1,0 +1,29 @@
+<%# Identity: who this browser is — the name, or the commune when anon —
+    and, for a comrade, how comrade talks to them (the party line lives
+    here; it's about the relationship, not navigation). The enlist ask
+    lives in the main window's gate, never the sidebar. Copy is
+    first-pass; the tweaking stage owns the final words. The
+    identity-banner controller on the section announces silent identity
+    changes once. %>
+<%# The structural hairline is neutral — red in the sidebar stays
+    semantic (wordmark, buttons, banner), never chrome. %>
+<%= tag.section class: 'mb-1 border-b border-ground-bright pb-3', data: {
+      controller: 'identity-banner',
+      comrade_name: identity_chip,
+      announce_identity: identity_changed ? 'false' : 'true', } do %>
+  <% if current_enlistee %>
+    <%# The chip is the name, verbless — long handles truncate so Step
+        out never moves; the aria-label carries the full name. %>
+    <div class="flex items-center justify-between">
+      <%= tag.span identity_chip, class: 'truncate text-sm text-neutral-300',
+            'aria-label': identity_chip %>
+      <%= link_to 'Step out', enlistment_path, title: 'Back to the commune',
+            data: { turbo_method: :delete },
+            class: 'shrink-0 cursor-pointer text-xs text-neutral-500 hover:text-neutral-200' %>
+    </div>
+    <%= render 'layouts/party_line' %>
+  <% else %>
+    <%= tag.span identity_chip, class: 'truncate text-sm text-neutral-300',
+          'aria-label': identity_chip %>
+  <% end %>
+<% end %>

@@ -134,6 +134,11 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
   mid-sentence.
 - Scratch files and scripts go in the app's `tmp/` (gitignored), not
   `/tmp`.
+- Tailwind builds fail with "Cannot find the tailwindcss executable":
+  the global `BUNDLE_FORCE_RUBY_PLATFORM=true` export forces the exe-less
+  ruby-platform gem over the binary one (noted in the 2026-10-22
+  chat-UI handoff). Override per invocation —
+  `BUNDLE_FORCE_RUBY_PLATFORM=false bin/rails tailwindcss:build`.
 - (grows as they're hit — add on discovery, with the date)
 
 ## Working agreement
@@ -148,12 +153,25 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
   unit each. When a follow-up change belongs to the unpushed commit just
   made (a fixup of it, or the same decision continuing), `--amend` into
   it instead of adding a new commit; never amend a pushed commit.
+  Approval to build a feature is not approval to commit it — a commit
+  needs its own go-ahead (2026-10-24: a string of copy-tweak commits
+  landed on rsl's mid-review word changes that weren't reviewed). Batch
+  the small changes and bring them as one ask; unpushed commits
+  accumulate on the branch, which is what it's for.
 - **`main` changes only through pull requests** (branch rules enforce it —
-  direct pushes are rejected). Branch from up-to-date `main` with the
-  `rsl-` prefix; batch a working session's commits onto one branch and one
+  direct pushes are rejected). Branch with `git co -b <name>` on a fetched,
+  up-to-date `main` — never off `origin/main` (the upstream would target
+  `main` and the push gets rejected) — with the `rsl-` prefix; batch a
+  working session's commits onto one branch and one
   PR — granular commits, few pushes — and merge after the maintainer has
   seen it. Agents never merge — merging is the maintainer's alone, even
   after approval of everything else.
+- **Doc updates ride with the work.** A handoff or PR whose work changes
+  or contradicts what any doc says (architecture.md, READMEs, the
+  session-doc flow) is incomplete until that doc is updated in the same
+  act — including live docs still stating the old rule (e.g. a handoff
+  header repeating a superseded lifecycle). Never leave the rule in one
+  doc and its contradiction in another.
 - **Before the first edit of a task, state the plan** — files, order, what
   changes — and wait for a go-ahead.
 - **Read before edit.** The edit tool matches byte-for-byte; read the

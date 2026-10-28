@@ -20,6 +20,15 @@ Rails.application.routes.draw do
     resources :messages, only: [:create]
   end
 
+  # Identity: one door, singular resource. create enlists or claims (the
+  # gate's "stay in the commune" is client-side — no route, no memory),
+  # update saves the party line, destroy steps out to the commune.
+  resource :enlistment, only: %i[create update destroy]
+
+  # Calibration's one quiet offer: create accepts (writes the pref),
+  # destroy declines (never asks again).
+  resource :calibration, only: %i[create destroy]
+
   # Render dynamic PWA files from app/views/pwa/* (remember to link manifest in application.html.erb)
   # get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
   # get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker

@@ -4,9 +4,9 @@
   <ul class="flex flex-col gap-1">
     <% @conversations.each do |conversation| %>
       <li class="flex items-center gap-2">
-        <%= link_to conversation.title.presence || '(untitled)', conversation_path(conversation), class: 'grow truncate rounded px-2 py-1 text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200' %>
+        <%= link_to conversation.title.presence || '(Untitled)', conversation_path(conversation), class: 'grow truncate rounded px-2 py-1 text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200' %>
         <%= button_to 'unarchive', unarchive_conversation_path(conversation), method: :patch, class: 'rounded border border-neutral-700 px-2 py-0.5 text-xs text-neutral-500 hover:text-neutral-200' %>
-        <%= button_to 'destroy', conversation_path(conversation), method: :delete, data: { turbo_confirm: "Delete '#{ conversation.title.presence || 'untitled' }' and its messages forever?" }, class: 'rounded border border-red-900 px-2 py-0.5 text-xs text-red-500 hover:text-red-300' %>
+        <%= button_to 'Destroy', conversation_path(conversation), method: :delete, data: { turbo_confirm: "Delete '#{ conversation.title.presence || 'Untitled' }' and its messages forever?" }, class: 'rounded border border-red-900 px-2 py-0.5 text-xs text-red-500 hover:text-red-300' %>
       </li>
     <% end %>
   </ul>

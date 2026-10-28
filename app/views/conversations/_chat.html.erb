@@ -1,23 +1,72 @@
-<%= tag.div 'data-controller': 'stream-reader', 'data-stream-reader-endpoint-value': endpoint, 'data-stream-reader-fresh-value': fresh, class: 'flex min-h-0 flex-1 flex-col' do %>
+<%= tag.div 'data-controller': 'stream-reader', 'data-stream-reader-endpoint-value': endpoint, 'data-stream-reader-fresh-value': fresh, 'data-stream-reader-keep-simple-value': current_enlistee&.offer_keep_simple? ? true : false, class: 'flex min-h-0 flex-1 flex-col' do %>
+  <%# Gated: a tokenless browser on an empty chat — the enlist card owns
+      the ask, the composer waits hidden, and the layout compensates for
+      the reserved title row so the card centers on the window. %>
+  <%# Gated: the card centers on the window — the bottom padding equals
+        the reserved title row (4rem) plus the top padding (2.5rem), both
+        rem-based so the balance holds at any font scale. %>
+    <% gated = current_enlistee.blank? && messages.empty? %>
   <%# The title/archive line's space is reserved on pages that don't render it yet, so the Turbo visit after the first reply doesn't shift the transcript: height is pinned, not content-driven (Safari sizes the real row's button differently than Chrome, and a content-matched spacer jitters anyway). The stream reader fills it with the sent question as a working title. %>
   <% if fresh %>
     <div class="mx-auto flex h-16 max-w-3xl shrink-0 items-center gap-3 px-5 pt-10 text-sm text-neutral-500 invisible" aria-hidden="true" data-stream-reader-target="title"><span class="grow truncate">placeholder</span></div>
   <% end %>
-  <%= tag.div id: 'transcript', 'data-stream-reader-target': 'transcript', class: class_names('mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-10', 'justify-center': messages.empty?) do %>
+  <%= tag.div id: 'transcript', 'data-stream-reader-target': 'transcript', class: class_names('mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 pt-10', gated ? 'pb-26' : 'pb-10') do %>
     <% if messages.empty? %>
-      <div class="greeting text-center">
-        <p class="text-3xl font-semibold tracking-tight text-gold">Comrade</p>
-        <p class="mt-2 text-sm text-neutral-500">Seize the means of information retrieval.</p>
-      </div>
+      <%# Gate: every fresh load of the new-chat surface asks — no cookie,
+          no memory. "Stay in the commune" reveals the composer for this
+          view only (client-side); a handle is the permanent way out. %>
+      <% if current_enlistee.blank? %>
+        <%# Copy is first-pass; the tweaking stage owns the final words.
+            The paragraph explains where comrade lives so the
+            household-open vs handle-kept choice has context. %>
+        <%# Centering is my-auto, not justify-center: auto margins vanish
+            when the card outgrows the panel (keyboard-open phone, large
+            font scale), so the top stays scrollable — justify-center
+            clips it unreachably. The gated pb-26 below still balances
+            the reserved title row so the card centers on the window. %>
+        <%= tag.div class: 'enlist-card my-auto text-center', 'data-stream-reader-target': 'gate' do %>
+          <p class="text-3xl font-semibold tracking-tight text-gold">Comrade</p>
+          <p class="mt-2 text-sm text-neutral-500">Seize the means of information retrieval.</p>
+          <p class="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-neutral-400">Comrade runs on a machine in this house. The model that answers lives here, the record of what's asked stays here, and the only people who can reach it are on this network. When you search, the question goes out to the open web — that's what searching is.</p>
+          <p class="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-neutral-400">The commune takes anyone, and what's asked there sits in the open for the whole household. Or use a handle, and your conversations stay under it: not really private, but basically, yeh?</p>
+          <%= form_with url: enlistment_path, class: 'mx-auto mt-6 flex max-w-md items-center' do |form| %>
+            <%= form.text_field :name, required: true, maxlength: 40, autocomplete: 'off',
+                  placeholder: 'What should we call you?',
+                  class: 'min-w-0 grow rounded-l-lg bg-neutral-300 px-4 py-3 leading-snug text-neutral-900 placeholder:text-neutral-500 focus:bg-neutral-100 focus:outline-none' %>
+            <%= form.button 'Enlist', class: 'min-w-[4.5rem] cursor-pointer rounded-r-lg bg-soviet/50 px-4 py-3 font-medium leading-snug text-white hover:bg-soviet/80' %>
+          <% end %>
+          <p class="mt-3 text-xs text-neutral-500">or
+            <%= link_to 'Stay in the commune', '#',
+                  data: { action: 'stream-reader#stayInCommune' },
+                  class: 'cursor-pointer underline hover:text-neutral-200' %>
+          </p>
+        <% end %>
+        <%# Revealed with the composer when the reader stays in the commune:
+            the gate branch carries its own greeting so the revealed state
+            looks like the enlisted empty chat. %>
+        <%= tag.div class: 'greeting my-auto text-center', hidden: true, 'data-stream-reader-target': 'greeting' do %>
+          <p class="text-3xl font-semibold tracking-tight text-gold">Comrade</p>
+          <p class="mt-2 text-sm text-neutral-500">Seize the means of information retrieval.</p>
+        <% end %>
+      <% else %>
+        <div class="greeting my-auto text-center">
+          <p class="text-3xl font-semibold tracking-tight text-gold">Comrade</p>
+          <p class="mt-2 text-sm text-neutral-500">Seize the means of information retrieval.</p>
+        </div>
+      <% end %>
     <% end %>
     <% grouped_turns(messages).each do |message, tool_notes| %>
-      <%= message_turn(message, tool_notes:, double_check: message.id == double_check_id(messages)) %>
+      <%= message_turn(message, tool_notes:, double_check: message.id == double_check_id(messages), break_down: message.id == break_down_id(messages)) %>
     <% end %>
   <% end %>
-  <div class="shrink-0 bg-ground/90 pb-6 pt-2 backdrop-blur">
-    <form data-turbo="false" data-stream-reader-target="form" data-action="submit->stream-reader#submit" class="mx-auto flex max-w-3xl items-end px-5">
+  <%= tag.div class: class_names('shrink-0 bg-ground/90 pb-6 pt-2 backdrop-blur', 'p-0': gated) do %>
+    <%# Gated on an empty chat: the composer sits here but hidden — the
+        gate card owns the ask until "stay in the commune" reveals it.
+        Everywhere else the composer just is. %>
+    <%= tag.form data: { turbo: false, 'stream-reader-target': 'form', action: 'submit->stream-reader#submit' },
+          class: class_names('mx-auto flex max-w-3xl items-end px-5', 'hidden': gated) do %>
       <%= tag.textarea nil, name: 'content', rows: 1, required: true, placeholder: messages.any? ? 'Reply…' : 'What do you need, comrade?', 'data-action': 'keydown->stream-reader#keydown', class: 'peer grow resize-none rounded-l-lg bg-neutral-300 px-4 py-3 leading-snug text-neutral-900 placeholder:text-neutral-500 focus:bg-neutral-100 focus:outline-none' %>
       <button type="submit" data-action="mousedown->stream-reader#holdFocus" class="min-w-[4.5rem] cursor-pointer rounded-r-lg bg-soviet/50 px-4 py-3 font-medium leading-snug text-white peer-focus:bg-soviet/80 hover:bg-soviet">Ask</button>
-    </form>
-  </div>
+    <% end %>
+  <% end %>
 <% end %>
