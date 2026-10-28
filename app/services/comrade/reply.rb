@@ -59,6 +59,11 @@ module Comrade
       },
     ].freeze
 
+    # Depth-mode invocation words, per config/comrade_prompt.md ("depth is a
+    # mode the reader invokes with 'go deeper', 'find the study', and words
+    # like that") — that file is the source of truth; keep these mirroring it.
+    DEPTH_TRIGGERS = /\b(go deeper|dive deeper|dig into|dig deeper|find the study|pull the study)\b/i
+
     def self.call(conversation:, content:, interrupted: nil)
       reply = new(conversation: conversation, content: content)
       persist_lead_in(reply, conversation, interrupted)
@@ -331,13 +336,30 @@ module Comrade
       messages = [{ role: 'system', content: prompt }, prefs_message].compact
       messages.concat(@conversation.to_transcript)
       messages << { role: 'system', content: final_instruction } if final_instruction
-      {
+      request = {
         model: ENV.fetch('COMRADE_LLM_MODEL'),
         messages: messages,
         tools: tool_definitions,
         stream: true,
         max_tokens: 8192,
       }
+      if (effort = effort_mode)
+        request[:reasoning_effort] = effort
+      end
+      request
+    end
+
+    # The reader invokes depth mode in words (DEPTH_TRIGGERS, mirroring the
+    # system prompt) or by pasting a link to a source — "read this one" is
+    # an explicit pointer. No match, no key, so endpoints that reject
+    # unknown fields still work.
+    def effort_mode
+      case ENV.fetch('COMRADE_LLM_REASONING_EFFORT', '')
+      when 'adaptive'
+        'high' if DEPTH_TRIGGERS.match?(@content) || @content.match?(%r{\bhttps?://\S+}i)
+      when 'low' then 'low'
+      when 'high' then 'high'
+      end
     end
 
     # Prefs ride as a second system message layered after the base prompt —
