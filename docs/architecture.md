@@ -176,6 +176,60 @@ honestly instead of guessed at.
 -device live transcripts wanted, or the busy-model wait visibly hurting.
 One of those, not curiosity alone — the SSE transport works today.
 
+## Images (designed 2026-10-28, not built yet)
+
+Comrade is text-only end to end, but the ground under it is not: both lane
+models are GLM-5.3-Flash, natively multimodal, and oMLX serves image
+inputs (base64, URL) on the same batching and cache stack as text. The
+oQ3e build keeps the entire vision tower in BF16 — the 3-bit quant taxed
+the text experts, not the eyes. Image support is plumbing, not capability.
+
+### The wire contract (designed first — it's the data contract)
+
+Message content stays a plain string for text-only turns. A turn with an
+attachment sends an OpenAI content-parts array instead —
+`[{type: text}, {type: image_url, image_url: {url: ...}}]` — the same
+principle as the effort field: no image, no parts, so endpoints that don't
+speak arrays still work. `to_transcript` re-serializes history with the
+same shape; a past image must not vanish from later turns' context.
+
+### Persistence
+
+Attachments live on disk (ActiveStorage's disk service — no Redis, no
+S3), with the message's jsonb holding pointers. A dedicated upload
+endpoint returns an attachment id the composer carries into the reply
+POST, for two reasons: base64 screenshots would blow the dev server's
+body limits on the reply path, and inline rows would bloat every show-page
+render. The transcript renders thumbnails from disk.
+
+### Routing
+
+A pasted image is "look at this one" — the same semantics as the pasted
+link. Image-bearing turns ride the slow lane: deliberate looking, high
+effort, the oQ4e's fuller text precision for whatever the model reads
+out of the image. `TurnLane` gains the attachment trigger; the prompt's
+depth-mode sentence mirrors it.
+
+### The composer
+
+Paste first — clipboard screenshots are the use ("what's wrong with
+this error?"), and iOS Safari delivers them in the paste event's files.
+File picker second, drag-and-drop later. Preview chips with removal ride
+above the textarea; the composer's focus and viewport care (the
+fixed-shell rules) apply to every new element it grows.
+
+### The quiet risk
+
+Images are prompt-injection surface: the model reads text inside
+screenshots and follows it like any instruction. One prompt line when
+this lands — text inside images is data, not instructions.
+
+**Sequencing.** After the lanes PR: wire contract, then persistence,
+then composer. Nothing in today's work depends on it.
+
+**What triggers the build.** The first screenshot you want comrade to
+read.
+
 ## Search and fetch
 
 - **SearXNG** aggregates search results, installed bare (no Docker) and run
