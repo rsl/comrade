@@ -10,38 +10,36 @@ citations. AGPL-3.0. Personal tool, built public-first.
 
 - Rails 8.1, Ruby 4.0, PostgreSQL. No Redis anywhere, ever — GoodJob for
   jobs, Solid Cache + Solid Cable for the rest.
-- Model endpoint: `COMRADE_LLM_BASE_URL` / `COMRADE_LLM_API_KEY` / `COMRADE_LLM_MODEL` from ENV.
-  Local dev uses oMLX on 127.0.0.1:8888 (OpenAI-compatible). Never hardcode
-  provider names in Ruby.
-- Search: SearXNG (bare install, planned localhost:8889), page fetch via
-  Tavily (`COMRADE_FETCH_API_KEY` from ENV).
+- Model endpoint: `COMRADE_LLM_BASE_URL` / `COMRADE_LLM_API_KEY` / `COMRADE_LLM_MODEL` from ENV,
+  any OpenAI-compatible endpoint. Fast and slow lanes extend it per turn:
+  `COMRADE_LLM_FAST_*` / `COMRADE_LLM_SLOW_*`. Never hardcode provider names,
+  host names, or ports in Ruby.
+- Search: SearXNG (`COMRADE_SEARCH_URL`), page fetch via Tavily
+  (`COMRADE_FETCH_API_KEY` from ENV).
 - Linting: RuboCop (`.rubocop.yml`, with a project-local custom cop in
   `lib/rubocop/cop/`), Reek, Herb, lefthook pre-commit. All four must stay
   clean; run them before saying done.
-- Dev server: `bin/dev` serves on `COMRADE_PORT` (1917 on this machine,
-  exported in `~/.oh-my-zsh/custom/exports.zsh`). Precedence: `-p` flag >
-  `COMRADE_PORT` > ambient `PORT` > Rails' 3000. The mapping lives only in
-  `bin/dev`, so production's Kamal-set `PORT` is untouchable by it.
-  Dev binds 0.0.0.0 so fleet devices reach it; `comrade.local` is
-  advertised over Bonjour via launchd (`com.rsl.comrade-mdns`) and
-  resolves locally via `/etc/hosts`. Lifecycle is daemon-only:
-  start/stop/restart through `bin/dev` — killing puma directly orphans
-  the Tailwind watcher (stray watchers were the 2026-10-23 leak; bin/dev
-  now kills process groups on stop and sweeps strays on start, but the
-  habit is `bin/dev restart`, not kill).
+- Dev server: `bin/dev` serves on the dev port — the port is deployment
+  config, set in the operator's env, never in docs. Precedence: `-p` flag >
+  ambient `PORT` > Rails' 3000. The mapping lives only in `bin/dev`, so
+  production's Kamal-set `PORT` is untouchable by it. Dev binds 0.0.0.0 so
+  fleet devices reach it. Lifecycle is daemon-only: start/stop/restart
+  through `bin/dev` — killing puma directly orphans the Tailwind watcher
+  (stray watchers were the 2026-10-23 leak; bin/dev now kills process
+  groups on stop and sweeps strays on start, but the habit is
+  `bin/dev restart`, not kill).
 - Env inheritance is a snapshot at process launch: shells spawned by an
   opencode session already carry `exports.zsh` vars — re-sourcing is
   only needed when `exports.zsh` gained keys after the parent shell
   launched, or the process starts from a non-login context. Verify with
   `echo $VAR` / `ps eww <pid>` before assuming a silent "(no results)"
   is an env problem (2026-10-23 correction of the 2026-10-22 note).
-- Dev host: `COMRADE_HOSTS` (comrade.local here) is safelisted in
+- Dev host: the operator's `COMRADE_HOSTS` names are safelisted in
   `config/environments/development.rb` — named hosts isolate cookies
   between the fleet's apps, which all share the localhost jar. Unset,
-  localhost and IP access work as Rails defaults.
-  Browse at `http://comrade.local:1917` locally, or — from any tailnet
-  device — `https://comrade.luckysneaks.dev` (no port; split DNS + Caddy
-  on this machine, runbook in `~/dev/luckysneaks-dev/`; also safelisted).
+  localhost and IP access work as Rails defaults. Browse at whatever
+  name `COMRADE_HOSTS` lists, locally or via the deployment's
+  proxy-routed name.
 
 ## Session docs
 
@@ -80,7 +78,7 @@ page headlessly, then Read the png (images render for the agent):
 ```
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
   --disable-gpu --screenshot=tmp/page.png --window-size=1280,2400 \
-  --hide-scrollbars "http://comrade.local:1917/<path>"
+  --hide-scrollbars "http://<host>:<port>/<path>"
 ```
 
 The loop for any UI work: change → screenshot → look → fix. Bring rsl in
