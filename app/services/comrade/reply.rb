@@ -311,7 +311,7 @@ module Comrade
     end
 
     def uri
-      @uri ||= URI.parse("#{ turn_lane['base_url'].chomp('/') }/chat/completions")
+      @uri ||= URI.parse("#{ turn_lane.base_url.chomp('/') }/chat/completions")
     end
 
     def headers
@@ -319,7 +319,7 @@ module Comrade
       # guarding keyword-argument hashes, which this isn't.
       # rubocop:disable-next Style/StringHashKeys
       { 'Content-Type' => 'application/json' }.tap do |header|
-        header['Authorization'] = "Bearer #{ turn_lane['api_key'] }" if turn_lane['api_key']
+        header['Authorization'] = "Bearer #{ turn_lane.api_key }" if turn_lane.api_key
       end
     end
 
@@ -328,13 +328,13 @@ module Comrade
       messages.concat(@conversation.to_transcript)
       messages << { role: 'system', content: final_instruction } if final_instruction
       request = {
-        model: turn_lane.fetch('model'),
+        model: turn_lane.model,
         messages: messages,
         tools: tool_definitions,
         stream: true,
         max_tokens: 8192,
       }
-      request[:reasoning_effort] = turn_lane['effort'] if turn_lane['effort']
+      request[:reasoning_effort] = turn_lane.effort if turn_lane.effort
       request
     end
 
