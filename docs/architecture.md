@@ -94,6 +94,21 @@ Plus two dev-only conveniences, both env-driven and unread in production:
   the dev port) needs nothing further — on this deployment that's the
   tailnet name via Caddy; see the reverse-proxy runbook.
 
+The LLM endpoint is lane-shaped, so two optional triples extend the one
+above, per turn: an ordinary turn rides the **fast lane**
+(`COMRADE_LLM_FAST_BASE_URL`/`_API_KEY`/`_MODEL`, instant answers;
+`COMRADE_LLM_FAST_EFFORT` optionally pins `low`/`high`, whose unset or
+`adaptive` value sends no field — the fast endpoint's own template
+governs), and a turn that invokes depth — the depth-words the system
+prompt names ("go deeper"), or a pasted link — rides the **slow lane**
+(`COMRADE_LLM_SLOW_*`, the deliberate endpoint; `COMRADE_LLM_SLOW_EFFORT`
+with default `adaptive` — `high` when depth is invoked in words, `low`
+on a pasted link). With no fast lane configured, everything rides the
+single triple exactly as lane-less comrade did, effort by
+`COMRADE_LLM_REASONING_EFFORT` (`adaptive` maps both word and link
+invocation to `high`); depth leaves the endpoint untouched with no slow
+lane; a lane without its own API key shares `COMRADE_LLM_API_KEY`.
+
 Nothing in the code knows a provider's name. The model endpoint is
 interchangeable by construction.
 

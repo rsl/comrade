@@ -59,11 +59,6 @@ module Comrade
       },
     ].freeze
 
-    # Depth-mode invocation words, per config/comrade_prompt.md ("depth is a
-    # mode the reader invokes with 'go deeper', 'find the study', and words
-    # like that") — that file is the source of truth; keep these mirroring it.
-    DEPTH_TRIGGERS = /\b(go deeper|dive deeper|dig into|dig deeper|find the study|pull the study)\b/i
-
     def self.call(conversation:, content:, interrupted: nil)
       reply = new(conversation: conversation, content: content)
       persist_lead_in(reply, conversation, interrupted)
@@ -316,11 +311,7 @@ module Comrade
     end
 
     def uri
-      @uri ||= URI.parse("#{ base_url.chomp('/') }/chat/completions")
-    end
-
-    def base_url
-      ENV.fetch('COMRADE_LLM_BASE_URL') { raise UpstreamError, 'COMRADE_LLM_BASE_URL is not set' }
+      @uri ||= URI.parse("#{ turn_lane['base_url'].chomp('/') }/chat/completions")
     end
 
     def headers
@@ -328,7 +319,7 @@ module Comrade
       # guarding keyword-argument hashes, which this isn't.
       # rubocop:disable-next Style/StringHashKeys
       { 'Content-Type' => 'application/json' }.tap do |header|
-        header['Authorization'] = "Bearer #{ ENV['COMRADE_LLM_API_KEY'] }" if ENV['COMRADE_LLM_API_KEY']
+        header['Authorization'] = "Bearer #{ turn_lane['api_key'] }" if turn_lane['api_key']
       end
     end
 
@@ -337,29 +328,14 @@ module Comrade
       messages.concat(@conversation.to_transcript)
       messages << { role: 'system', content: final_instruction } if final_instruction
       request = {
-        model: ENV.fetch('COMRADE_LLM_MODEL'),
+        model: turn_lane.fetch('model'),
         messages: messages,
         tools: tool_definitions,
         stream: true,
         max_tokens: 8192,
       }
-      if (effort = effort_mode)
-        request[:reasoning_effort] = effort
-      end
+      request[:reasoning_effort] = turn_lane['effort'] if turn_lane['effort']
       request
-    end
-
-    # The reader invokes depth mode in words (DEPTH_TRIGGERS, mirroring the
-    # system prompt) or by pasting a link to a source — "read this one" is
-    # an explicit pointer. No match, no key, so endpoints that reject
-    # unknown fields still work.
-    def effort_mode
-      case ENV.fetch('COMRADE_LLM_REASONING_EFFORT', '')
-      when 'adaptive'
-        'high' if DEPTH_TRIGGERS.match?(@content) || @content.match?(%r{\bhttps?://\S+}i)
-      when 'low' then 'low'
-      when 'high' then 'high'
-      end
     end
 
     # Prefs ride as a second system message layered after the base prompt —
@@ -375,12 +351,126 @@ module Comrade
 
       { role: 'system', content: "How this reader wants answers — apply as written:\n#{ lines.join("\n") }" }
     end
-
     def prompt
       path = CUSTOM_PROMPT.exist? ? CUSTOM_PROMPT : DEFAULT_PROMPT
       raise UpstreamError, "System prompt missing at #{ path }" unless path.exist?
 
       path.read
+    end
+
+    # The endpoint a turn rides, decided once per turn — TurnLane below
+    # owns the how. Ordinary turns ride the fast lane
+    # (COMRADE_LLM_FAST_BASE_URL/_API_KEY/_MODEL — instant chat and
+    # search); a turn that invokes depth — the depth-words the prompt
+    # file names, or a pasted link ("read this one") — rides the slow
+    # lane (COMRADE_LLM_SLOW_*), the deliberate endpoint. The fleet
+    # starts small: with no fast lane configured, every turn rides the
+    # legacy COMRADE_LLM_* triple exactly as lane-less comrade did; with
+    # no slow lane, depth invocation stays on the same endpoint; a lane
+    # without its own API key shares the legacy one. Turn lanes memoize
+    # per reply, not per process.
+
+    def turn_lane
+      @turn_lane ||= TurnLane.build(@content)
+    end
+
+    class TurnLane
+      # Depth-mode invocation words, per config/comrade_prompt.md ("depth
+      # is a mode the reader invokes with 'go deeper', 'find the study',
+      # and words like that") — that file is the source of truth; keep
+      # these mirroring it.
+      DEPTH_TRIGGERS = /\b(go deeper|dive deeper|dig into|dig deeper|find the study|pull the study)\b/i
+
+      # A pasted link: "read this one" is an explicit pointer to a source.
+      LINK = %r{\bhttps?://}i
+
+      attr_reader :base_url, :model, :api_key, :effort
+
+      def self.build(content)
+        new(content)
+      end
+
+      def initialize(content)
+        @content = content
+        kind = ENV['COMRADE_LLM_FAST_BASE_URL'] ? default_kind : 'legacy'
+        build_lane(kind)
+        @effort = method("#{ kind }_effort").call
+      end
+
+      def default_kind
+        invoked? && ENV['COMRADE_LLM_SLOW_BASE_URL'] ? 'slow' : 'fast'
+      end
+
+      private
+
+      def build_lane(which)
+        @base_url = required_env(which, 'BASE_URL')
+        @model = required_env(which, 'MODEL')
+        @api_key = ENV["COMRADE_LLM_#{ which.upcase }_API_KEY"]
+      end
+
+      def required_env(which, suffix)
+        key = "COMRADE_LLM_#{ which.upcase }_#{ suffix }"
+        value = ENV[key]
+        return value if value.present?
+
+        raise UpstreamError, "#{ key } is not set"
+      end
+
+      def invoked?
+        @content.match?(DEPTH_TRIGGERS) || @content.match?(LINK)
+      end
+
+      def words?
+        @content.match?(DEPTH_TRIGGERS)
+      end
+
+      # Depth mode: the reader invoked it in words, so think hard; a
+      # pasted link is explicit but skips the pre-deliberation budget.
+      # COMRADE_LLM_SLOW_EFFORT: 'adaptive' (also unset) encodes exactly
+      # that word/link split; 'low'/'high' pin it; anything unknown fails
+      # loudly — misconfiguring silently is worse than erroring.
+      def slow_effort
+        pin('COMRADE_LLM_SLOW_EFFORT') || slow_adaptive
+      end
+
+      def slow_adaptive
+        words? ? 'high' : 'low'
+      end
+
+      # Fast lane effort: the endpoint's own chat template governs
+      # (Flash-Next behaves — its defaults are what the bench praised),
+      # so unset, empty and 'adaptive' all send no field. 'low'/'high'
+      # pin it; unknown fails loudly.
+      def fast_effort
+        pin('COMRADE_LLM_FAST_EFFORT')
+      end
+
+      # The lane pin: 'low'/'high' → the value; unset, empty and
+      # 'adaptive' → nil (caller decides); anything unknown raises.
+      def pin(env_key)
+        value = ENV.fetch(env_key, '').presence
+        return value if value.in?(%w[low high])
+
+        unless value.blank? || value == 'adaptive'
+          raise UpstreamError, "#{ env_key }: unknown value \"#{ value }\"; use low, high, adaptive, or unset"
+        end
+
+        nil
+      end
+
+      # The legacy lane's own contract: COMRADE_LLM_REASONING_EFFORT with
+      # 'adaptive' treating word and link invocation alike — this is the
+      # single-endpoint behavior pre-lanes, kept for unchanged setups.
+      def legacy_effort
+        value = ENV.fetch('COMRADE_LLM_REASONING_EFFORT', '')
+        case value
+        when 'adaptive'
+          'high' if invoked?
+        when 'low', 'high'
+          value
+        end
+      end
     end
   end
 end
