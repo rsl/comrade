@@ -351,6 +351,7 @@ module Comrade
 
       { role: 'system', content: "How this reader wants answers — apply as written:\n#{ lines.join("\n") }" }
     end
+
     def prompt
       path = CUSTOM_PROMPT.exist? ? CUSTOM_PROMPT : DEFAULT_PROMPT
       raise UpstreamError, "System prompt missing at #{ path }" unless path.exist?

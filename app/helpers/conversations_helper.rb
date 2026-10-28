@@ -179,12 +179,4 @@ module ConversationsHelper
       map[number.to_i] = { 'url' => url, 'title' => title.presence }
     end
   end
-
-  # :reek:NilCheck — a nil index is the signal: the marker stays as written.
-  def marker_index(marker, citations, marker_urls)
-    url = marker_urls.dig(marker, 'url')
-    return citations.index { |citation| citation['url'] == url }&.next if url
-
-    marker if marker.between?(1, citations.size)
-  end
 end
