@@ -406,11 +406,25 @@ module Comrade
       def build_lane(which)
         @base_url = required_env(which, 'BASE_URL')
         @model = required_env(which, 'MODEL')
-        @api_key = ENV["COMRADE_LLM_#{ which.upcase }_API_KEY"]
+        @api_key = ENV[api_key_env(which)] || ENV['COMRADE_LLM_API_KEY']
+      end
+
+      # The legacy lane rides the unsuffixed names — the original
+      # COMRADE_LLM_* triple, which is the degrade contract: one triple
+      # configured, no fast lane, everything exactly as lane-less comrade
+      # ran it.
+      def env_name(which, suffix)
+        return "COMRADE_LLM_#{ suffix }" if which == 'legacy'
+
+        "COMRADE_LLM_#{ which.upcase }_#{ suffix }"
+      end
+
+      def api_key_env(which)
+        env_name(which, 'API_KEY')
       end
 
       def required_env(which, suffix)
-        key = "COMRADE_LLM_#{ which.upcase }_#{ suffix }"
+        key = env_name(which, suffix)
         value = ENV[key]
         return value if value.present?
 
