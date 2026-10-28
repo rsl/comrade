@@ -380,7 +380,8 @@ module Comrade
       # is a mode the reader invokes with 'go deeper', 'find the study',
       # and words like that") — that file is the source of truth; keep
       # these mirroring it.
-      DEPTH_TRIGGERS = /\b(go deeper|dive deeper|dig into|dig deeper|find the study|pull the study)\b/i
+      DEPTH_TRIGGERS =
+        /\b(go deeper|dive deeper|dig into|dig deeper|find the study|pull the study|walk me through|in detail)\b/i
 
       # A pasted link: "read this one" is an explicit pointer to a source.
       LINK = %r{\bhttps?://}i
