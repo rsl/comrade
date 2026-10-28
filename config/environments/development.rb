@@ -3,15 +3,13 @@ require 'active_support/core_ext/integer/time'
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
 
-  # Named dev host (comrade.local etc.) for cookie isolation between the
-  # fleet's apps — set COMRADE_HOST in the environment and add the name to
-  # /etc/hosts pointing at 127.0.0.1. Unset, localhost and IP access work
-  # as Rails defaults.
-  config.hosts << ENV['COMRADE_HOST'] if ENV['COMRADE_HOST'].present?
-
-  # Tailnet name (split DNS + Caddy on the Mac Studio): reached from any
-  # device in the tailnet over HTTPS, no /etc/hosts needed.
-  config.hosts << 'comrade.luckysneaks.dev'
+  # Named dev hosts (comma-separated, e.g. "comrade.local,myapp.tunnel.example.com")
+  # for cookie isolation between the fleet's apps, which all share the
+  # localhost jar. Local named hosts point at 127.0.0.1 in /etc/hosts;
+  # proxy-routed names (split DNS + TLS termination in front of the dev
+  # port) need nothing further. Unset, localhost and IP access work as
+  # Rails defaults.
+  config.hosts += ENV.fetch('COMRADE_HOST', '').split(/\s*,\s*/).reject(&:empty?)
 
   # Make code changes take effect immediately without server restart.
   config.enable_reloading = true
