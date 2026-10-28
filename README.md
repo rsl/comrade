@@ -84,9 +84,9 @@ Comrade needs three things running nearby:
    ```
 2. **SearXNG** for search — a bare local install is fine (see
    `docs/searxng.md` for a launchd setup).
-3. **A Tavily API key** for page extraction:
+3. **A page-extraction API key** (a Tavily key today):
    ```bash
-   export TAVILY_API_KEY="tvly-..."
+   export COMRADE_FETCH_API_KEY="tvly-..."
    ```
 
 Then:

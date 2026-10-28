@@ -20,7 +20,7 @@ module Comrade
       THROTTLE_RETRY_DELAY = 4.0
 
       def self.call(query:)
-        return 'Search unavailable: SEARXNG_URL is not set.' if ENV['SEARXNG_URL'].blank?
+        return 'Search unavailable: COMRADE_SEARCH_URL is not set.' if ENV['COMRADE_SEARCH_URL'].blank?
 
         new(query: query).call
       end
@@ -105,7 +105,7 @@ module Comrade
       end
 
       def base_url
-        ENV['SEARXNG_URL']
+        ENV['COMRADE_SEARCH_URL']
       end
     end
   end

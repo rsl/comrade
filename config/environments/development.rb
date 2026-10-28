@@ -3,13 +3,13 @@ require 'active_support/core_ext/integer/time'
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
 
-  # Named dev hosts (comma-separated, e.g. "comrade.local,myapp.tunnel.example.com")
+  # Named dev hosts (comma-separated, e.g. "myapp.local,myapp.tunnel.example.com")
   # for cookie isolation between the fleet's apps, which all share the
   # localhost jar. Local named hosts point at 127.0.0.1 in /etc/hosts;
   # proxy-routed names (split DNS + TLS termination in front of the dev
   # port) need nothing further. Unset, localhost and IP access work as
   # Rails defaults.
-  config.hosts += ENV.fetch('COMRADE_HOST', '').split(/\s*,\s*/).reject(&:empty?)
+  config.hosts += ENV.fetch('COMRADE_HOSTS', '').split(/\s*,\s*/).reject(&:empty?)
 
   # Make code changes take effect immediately without server restart.
   config.enable_reloading = true

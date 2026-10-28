@@ -17,7 +17,7 @@ module Comrade
       end
 
       def call
-        return 'Fetch unavailable: TAVILY_API_KEY is not set.' if api_key.blank?
+        return 'Fetch unavailable: COMRADE_FETCH_API_KEY is not set.' if api_key.blank?
 
         response = fetch_response
         return "Fetch failed: HTTP #{ response.code }" unless response.is_a?(Net::HTTPSuccess)
@@ -63,7 +63,7 @@ module Comrade
       end
 
       def api_key
-        ENV['TAVILY_API_KEY']
+        ENV['COMRADE_FETCH_API_KEY']
       end
     end
   end

@@ -78,15 +78,15 @@ Five runtime environment variables, nothing else:
 - `COMRADE_LLM_BASE_URL` — any OpenAI-compatible chat-completions endpoint
 - `COMRADE_LLM_API_KEY`
 - `COMRADE_LLM_MODEL`
-- `TAVILY_API_KEY` — page extraction
-- `SEARXNG_URL` — search
+- `COMRADE_FETCH_API_KEY` — page extraction
+- `COMRADE_SEARCH_URL` — search
 
 Plus two dev-only conveniences, both env-driven and unread in production:
 
 - `COMRADE_PORT` — the port `bin/dev` serves on (maps to `PORT` before
   exec; unset, `PORT`, then Rails' 3000 apply). Exists so a fleet of apps
   can each own a named port variable without contesting the generic one.
-- `COMRADE_HOST` — one or more comma-separated named dev hosts, safelisted
+- `COMRADE_HOSTS` — one or more comma-separated named dev hosts, safelisted
   in the development config so HostAuthorization accepts them. Named hosts
   isolate cookies between the fleet's apps, which all share the localhost
   jar. A local host points at 127.0.0.1 in /etc/hosts; a proxy-routed

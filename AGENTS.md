@@ -14,7 +14,7 @@ citations. AGPL-3.0. Personal tool, built public-first.
   Local dev uses oMLX on 127.0.0.1:8888 (OpenAI-compatible). Never hardcode
   provider names in Ruby.
 - Search: SearXNG (bare install, planned localhost:8889), page fetch via
-  Tavily (`TAVILY_API_KEY` from ENV).
+  Tavily (`COMRADE_FETCH_API_KEY` from ENV).
 - Linting: RuboCop (`.rubocop.yml`, with a project-local custom cop in
   `lib/rubocop/cop/`), Reek, Herb, lefthook pre-commit. All four must stay
   clean; run them before saying done.
@@ -35,7 +35,7 @@ citations. AGPL-3.0. Personal tool, built public-first.
   launched, or the process starts from a non-login context. Verify with
   `echo $VAR` / `ps eww <pid>` before assuming a silent "(no results)"
   is an env problem (2026-10-23 correction of the 2026-10-22 note).
-- Dev host: `COMRADE_HOST` (comrade.local here) is safelisted in
+- Dev host: `COMRADE_HOSTS` (comrade.local here) is safelisted in
   `config/environments/development.rb` — named hosts isolate cookies
   between the fleet's apps, which all share the localhost jar. Unset,
   localhost and IP access work as Rails defaults.
