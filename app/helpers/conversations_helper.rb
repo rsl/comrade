@@ -119,16 +119,25 @@ module ConversationsHelper
       'title' => cited['title'] || URI.parse(cited['url']).host, }
   end
 
-  # Inline source chips: title-only links, quiet, one per source.
+  # Inline source chips: title-only links, quiet, one per source. Each
+  # carries a go-deeper affordance — the twins in stream_reader_controller.js
+  # (sourceChips) must stay byte-shape-identical with this markup; the post-
+  # first-reply Turbo.visit and the streaming path swap them freely.
   def source_chips(sources)
     return ''.html_safe if sources.blank?
 
     links = sources.map do |source|
-      link_to(source['title'] || source['url'],
+      title = link_to(source['title'] || source['url'],
         source['url'],
         target: '_blank',
         rel: 'noopener',
         class: 'underline hover:text-neutral-300',)
+      deeper = link_to('go deeper',
+        '#',
+        data: { title: source['title'], url: source['url'] },
+        data_action: 'stream-reader#goDeeper',
+        class: 'go-deeper cursor-pointer underline hover:text-neutral-300',)
+      safe_join([title, deeper], ' · ')
     end
     safe_join(['sources: '.html_safe, safe_join(links, ' · ')])
   end
@@ -169,13 +178,5 @@ module ConversationsHelper
       # rubocop:disable-next Style/StringHashKeys
       map[number.to_i] = { 'url' => url, 'title' => title.presence }
     end
-  end
-
-  # :reek:NilCheck — a nil index is the signal: the marker stays as written.
-  def marker_index(marker, citations, marker_urls)
-    url = marker_urls.dig(marker, 'url')
-    return citations.index { |citation| citation['url'] == url }&.next if url
-
-    marker if marker.between?(1, citations.size)
   end
 end

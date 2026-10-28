@@ -78,23 +78,36 @@ Five runtime environment variables, nothing else:
 - `COMRADE_LLM_BASE_URL` — any OpenAI-compatible chat-completions endpoint
 - `COMRADE_LLM_API_KEY`
 - `COMRADE_LLM_MODEL`
-- `TAVILY_API_KEY` — page extraction
-- `SEARXNG_URL` — search
+- `COMRADE_FETCH_API_KEY` — page extraction
+- `COMRADE_SEARCH_URL` — search
 
 Plus two dev-only conveniences, both env-driven and unread in production:
 
 - `COMRADE_PORT` — the port `bin/dev` serves on (maps to `PORT` before
   exec; unset, `PORT`, then Rails' 3000 apply). Exists so a fleet of apps
   can each own a named port variable without contesting the generic one.
-- `COMRADE_HOST` — a named dev host (e.g. `comrade.local`), safelisted in
-  the development config so HostAuthorization accepts it. Named hosts
+- `COMRADE_HOSTS` — one or more comma-separated named dev hosts, safelisted
+  in the development config so HostAuthorization accepts them. Named hosts
   isolate cookies between the fleet's apps, which all share the localhost
-  jar; point the name at 127.0.0.1 in /etc/hosts.
-- `comrade.luckysneaks.dev` — the tailnet name, also safelisted. Split DNS
-  resolves it (via CoreDNS on the Mac Studio) to the Studio's tailnet IP
-  from any fleet device; Caddy terminates a wildcard cert and proxies to
-  127.0.0.1:1917. No port, no /etc/hosts, works off-home. Setup and
-  runbook: `~/dev/luckysneaks-dev/`.
+  jar. A local host points at 127.0.0.1 in /etc/hosts; a proxy-routed
+  host (split DNS resolving to this machine, TLS termination in front of
+  the dev port) needs nothing further — on this deployment that's the
+  tailnet name via Caddy; see the reverse-proxy runbook.
+
+The LLM endpoint is lane-shaped, so two optional triples extend the one
+above, per turn: an ordinary turn rides the **fast lane**
+(`COMRADE_LLM_FAST_BASE_URL`/`_API_KEY`/`_MODEL`, instant answers;
+`COMRADE_LLM_FAST_EFFORT` optionally pins `low`/`high`, whose unset or
+`adaptive` value sends no field — the fast endpoint's own template
+governs), and a turn that invokes depth — the depth-words the system
+prompt names ("go deeper"), or a pasted link — rides the **slow lane**
+(`COMRADE_LLM_SLOW_*`, the deliberate endpoint; `COMRADE_LLM_SLOW_EFFORT`
+with default `adaptive` — `high` when depth is invoked in words, `low`
+on a pasted link). With no fast lane configured, everything rides the
+single triple exactly as lane-less comrade did, effort by
+`COMRADE_LLM_REASONING_EFFORT` (`adaptive` maps both word and link
+invocation to `high`); depth leaves the endpoint untouched with no slow
+lane; a lane without its own API key shares `COMRADE_LLM_API_KEY`.
 
 Nothing in the code knows a provider's name. The model endpoint is
 interchangeable by construction.
@@ -162,6 +175,60 @@ honestly instead of guessed at.
 **What triggers the build.** Lost partials annoying in real use, multi
 -device live transcripts wanted, or the busy-model wait visibly hurting.
 One of those, not curiosity alone — the SSE transport works today.
+
+## Images (designed 2026-10-28, not built yet)
+
+Comrade is text-only end to end, but the ground under it is not: both lane
+models are GLM-5.3-Flash, natively multimodal, and oMLX serves image
+inputs (base64, URL) on the same batching and cache stack as text. The
+oQ3e build keeps the entire vision tower in BF16 — the 3-bit quant taxed
+the text experts, not the eyes. Image support is plumbing, not capability.
+
+### The wire contract (designed first — it's the data contract)
+
+Message content stays a plain string for text-only turns. A turn with an
+attachment sends an OpenAI content-parts array instead —
+`[{type: text}, {type: image_url, image_url: {url: ...}}]` — the same
+principle as the effort field: no image, no parts, so endpoints that don't
+speak arrays still work. `to_transcript` re-serializes history with the
+same shape; a past image must not vanish from later turns' context.
+
+### Persistence
+
+Attachments live on disk (ActiveStorage's disk service — no Redis, no
+S3), with the message's jsonb holding pointers. A dedicated upload
+endpoint returns an attachment id the composer carries into the reply
+POST, for two reasons: base64 screenshots would blow the dev server's
+body limits on the reply path, and inline rows would bloat every show-page
+render. The transcript renders thumbnails from disk.
+
+### Routing
+
+A pasted image is "look at this one" — the same semantics as the pasted
+link. Image-bearing turns ride the slow lane: deliberate looking, high
+effort, the oQ4e's fuller text precision for whatever the model reads
+out of the image. `TurnLane` gains the attachment trigger; the prompt's
+depth-mode sentence mirrors it.
+
+### The composer
+
+Paste first — clipboard screenshots are the use ("what's wrong with
+this error?"), and iOS Safari delivers them in the paste event's files.
+File picker second, drag-and-drop later. Preview chips with removal ride
+above the textarea; the composer's focus and viewport care (the
+fixed-shell rules) apply to every new element it grows.
+
+### The quiet risk
+
+Images are prompt-injection surface: the model reads text inside
+screenshots and follows it like any instruction. One prompt line when
+this lands — text inside images is data, not instructions.
+
+**Sequencing.** After the lanes PR: wire contract, then persistence,
+then composer. Nothing in today's work depends on it.
+
+**What triggers the build.** The first screenshot you want comrade to
+read.
 
 ## Search and fetch
 

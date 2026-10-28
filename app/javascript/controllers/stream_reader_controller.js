@@ -450,8 +450,11 @@ export default class extends Controller {
 
   sourceChips(sources, escape) {
     if (!sources.length) return ""
-    const links = sources.map((s) =>
-      `<a href="${escape(s.url)}" target="_blank" rel="noopener" class="underline hover:text-neutral-300">${escape(s.title || s.url)}</a>`)
+    const links = sources.map((s) => {
+      const title = `<a href="${escape(s.url)}" target="_blank" rel="noopener" class="underline hover:text-neutral-300">${escape(s.title || s.url)}</a>`
+      const deeper = `<a href="#" data-title="${escape(s.title || "")}" data-url="${escape(s.url)}" data-action="stream-reader#goDeeper" class="go-deeper cursor-pointer underline hover:text-neutral-300">go deeper</a>`
+      return `${title} · ${deeper}`
+    })
     return `<div class="mt-1 mb-4 text-xs text-neutral-500">sources: ${links.join(" · ")}</div>`
   }
 
@@ -530,6 +533,22 @@ export default class extends Controller {
   // shows them on the latest answer only.
   clearOffers() {
     this.element.querySelectorAll(".double-check-offer, .break-down-offer, .keep-simple-offer").forEach((el) => { el.remove() })
+  }
+
+  // The per-source chip offer: submit a canned depth turn naming that one
+  // source through the composer path, so it behaves exactly like typed
+  // text ("go deeper on…" also trips the server's depth mode). Same
+  // refusals as doubleCheck — streaming would steer, a draft must not be
+  // clobbered.
+  goDeeper(event) {
+    event.preventDefault()
+    const chip = event.target.closest("a.go-deeper")
+    const input = this.formTarget.elements.content
+    if (!chip || this.currentRequest || input.value.trim()) return
+    const title = chip.dataset.title && chip.dataset.title.trim()
+    const source = title ? `${title} (${chip.dataset.url})` : chip.dataset.url
+    input.value = `go deeper on this source — ${source} — what does it actually support, and what did the answer leave out?`
+    this.formTarget.requestSubmit()
   }
 
   scrollToBottom() {

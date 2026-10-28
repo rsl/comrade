@@ -55,7 +55,7 @@ launchctl load ~/Library/LaunchAgents/com.rsl.searxng.plist
 Then point Comrade at it:
 
 ```bash
-export SEARXNG_URL="http://127.0.0.1:8889"
+export COMRADE_SEARCH_URL="http://127.0.0.1:8889"
 ```
 
 Check it with one curl:
