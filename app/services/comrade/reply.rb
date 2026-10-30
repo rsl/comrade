@@ -178,9 +178,16 @@ module Comrade
       Array(calls).each { |fragment| absorb_tool_call(tool_calls, fragment) }
     end
 
+    # Endpoints' chat templates often open an answer with blank lines
+    # ("\n\n" before the first word). Pre-wrap streaming and the
+    # paragraph-split renders preserve them as phantom spacing, so while
+    # nothing real has arrived yet, leading whitespace goes — one point
+    # fixing the stream display, the persisted record, and both renders.
+    # Mid-answer newlines are never touched.
     def absorb_text(text, content)
+      text = text.lstrip if content.blank?
       content << text
-      yielder << { type: 'delta', text: text }
+      yielder << { type: 'delta', text: text } unless text.empty?
     end
 
     def absorb_tool_call(tool_calls, fragment)

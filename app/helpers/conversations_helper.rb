@@ -76,7 +76,10 @@ module ConversationsHelper
   def cited_paragraphs(message)
     citations = message.citations || []
     body, marker_urls = footer_map(message.content)
-    paragraphs = body.split(/\n\n+/).map do |paragraph|
+    # A leading blank run in the persisted content (older answers carry
+    # "\n\n" from the endpoint's chat template) splits into an empty first
+    # paragraph — a phantom mb-3 div. Blank segments never render.
+    paragraphs = body.split(/\n\n+/).reject(&:blank?).map do |paragraph|
       render_answer_paragraph(paragraph, citations, marker_urls)
     end
     safe_join(paragraphs)
