@@ -29,12 +29,14 @@ export default class extends Controller {
   // Auto-scroll follows the stream only while the reader is pinned to the
   // bottom; scrolling up pauses it and raises the "latest" chip.
   autoScroll = true
-  // The foreman's status: one quiet line under the COMRADE label while the
-  // turn runs — the newest phase with a running clock — expandable into the
-  // full timestamped log. It replaces the old live dot as the liveness
-  // device, rides events the wire already sends, and dies with the turn:
-  // the server render has no counterpart, so it must not survive the
-  // Turbo.visit swap (pixel-identity contract).
+  // The foreman's status: one quiet line below the streaming text while the
+  // turn runs — the newest phase with a running clock, pinned to the
+  // answer's growing edge — expandable into the full timestamped log. It
+  // replaces the old live dot as the liveness device, rides events the
+  // wire already sends, and dies with the turn: the server render has no
+  // counterpart, so it must not survive the Turbo.visit swap
+  // (pixel-identity contract); the footer's stats segment is what
+  // survives.
   statusEl = null
   logEl = null
   turnTimer = null
@@ -285,9 +287,11 @@ export default class extends Controller {
   }
 
   // The foreman's status: a pulsing dot, the newest phase, and a running
-  // clock on one quiet line under the COMRADE label; a click expands the
-  // full timestamped log. Up when the stream opens, gone when it ends —
-  // completion, failure, or steering (the stream call's finally).
+  // clock on one quiet line BELOW the streaming text — pinned to the
+  // answer's growing edge, where the reader is looking. A click expands
+  // the full timestamped log. Up when the stream opens, gone when it
+  // ends — completion, failure, or steering (the stream call's finally);
+  // the stats segment in the footer is what survives.
   startTurnStatus(answer) {
     this.turnT0 = Date.now()
     this.turnPhase = "thinking"
@@ -305,7 +309,10 @@ export default class extends Controller {
       '<span class="live-dot inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-soviet"></span>' +
       '<span class="turn-status-text grow"></span>'
     this.statusClock = this.statusEl.querySelector(".turn-status-text")
-    answer.querySelector("p").after(this.statusEl)
+    // Anchored below the content div: text grows above it, tool rounds
+    // already create each new content div before it, so the status stays
+    // at the answer's growing edge without re-insertion.
+    this.contentEl.after(this.statusEl)
     this.renderTurnStatus()
     this.turnTimer = setInterval(() => this.renderTurnStatus(), 1000)
   }
