@@ -4,8 +4,9 @@ module Comrade
   # The reply loop: persists the user message, streams the model's answer
   # from any OpenAI-compatible chat-completions endpoint, and persists the
   # assistant message on clean completion. Yields structured events —
-  # {type: 'delta'} text, {type: 'tool'} activity, {type: 'error'} upstream
-  # failure — the caller owns transport. When the model emits tool_calls, the
+  # {type: 'start'} lane/model, {type: 'delta'} text, {type: 'tool'}
+  # activity, {type: 'error'} upstream failure — the caller owns transport.
+  # When the model emits tool_calls, the
   # loop pauses streaming,
   # executes the tools, persists the exchange, and resumes with the results
   # in context; the tool round trip is invisible to the wire except as
@@ -95,6 +96,16 @@ module Comrade
     def enumerator
       Enumerator.new do |yielder|
         @yielder = yielder
+        # The foreman's opening entry: which lane the turn rides, before any
+        # model bytes flow — the reader's status line hangs its phase
+        # narration and clock on this. Building the lane here also keeps a
+        # misconfigured env raising inside the consumed enumerator, so the
+        # transport still turns it into an error event rather than a 500.
+        # Effort is only named when pinned; compact drops the nil.
+        yielder << { type: 'start',
+                     lane: turn_lane.kind,
+                     model: turn_lane.model,
+                     effort: turn_lane.effort, }.compact
         stream_into
       end
     end
@@ -393,7 +404,7 @@ module Comrade
       # A pasted link: "read this one" is an explicit pointer to a source.
       LINK = %r{\bhttps?://}i
 
-      attr_reader :base_url, :model, :api_key, :effort
+      attr_reader :base_url, :model, :api_key, :effort, :kind
 
       def self.build(content)
         new(content)
@@ -413,6 +424,7 @@ module Comrade
       private
 
       def build_lane(which)
+        @kind = which
         @base_url = required_env(which, 'BASE_URL')
         @model = required_env(which, 'MODEL')
         @api_key = ENV[api_key_env(which)] || ENV['COMRADE_LLM_API_KEY']

@@ -3,7 +3,7 @@ import { Turbo } from "@hotwired/turbo-rails"
 import { marked } from "marked"
 
 // Streams an SSE reply into the transcript from a plain fetch: events are
-// JSON objects on `data:` lines ({type: "delta"|"tool"|"citations"|"error"}),
+// JSON objects on `data:` lines ({type: "start"|"delta"|"tool"|"citations"|"error"}),
 // `[DONE]` ends the stream. Tool events render as "searched for X" chips
 // ahead of the answer text. Sending while a reply streams aborts it —
 // "steering": the partial answer is persisted as context, and the new
@@ -29,6 +29,20 @@ export default class extends Controller {
   // Auto-scroll follows the stream only while the reader is pinned to the
   // bottom; scrolling up pauses it and raises the "latest" chip.
   autoScroll = true
+  // The foreman's status: one quiet line under the COMRADE label while the
+  // turn runs — the newest phase with a running clock — expandable into the
+  // full timestamped log. It replaces the old live dot as the liveness
+  // device, rides events the wire already sends, and dies with the turn:
+  // the server render has no counterpart, so it must not survive the
+  // Turbo.visit swap (pixel-identity contract).
+  statusEl = null
+  logEl = null
+  turnTimer = null
+  turnT0 = null
+  turnPhase = "thinking"
+  turnLaneLabel = ""
+  turnLog = []
+  sawToken = false
 
   connect() {
     // The transcript panel is the scroll surface (app shell: the document
@@ -51,6 +65,7 @@ export default class extends Controller {
   disconnect() {
     this.transcriptTarget.removeEventListener("scroll", this.onScroll)
     this.element.querySelector(".jump-latest")?.remove()
+    this.stopTurnStatus()
   }
 
   updateAutoScroll() {
@@ -128,7 +143,6 @@ export default class extends Controller {
       this.finishStream(this.liveAnswer)
       this.currentRequest.abort()
     } else if (this.currentRequest) {
-      this.clearLiveDots()
       this.currentRequest.abort()
     }
 
@@ -144,7 +158,6 @@ export default class extends Controller {
     this.clearOffers()
     const request = this.currentRequest = new AbortController()
     this.liveAnswer = answer
-    this.showLiveDot(answer)
     this.syncAskButton()
     let completed
 
@@ -175,6 +188,7 @@ export default class extends Controller {
       this.endpointValue = `${this.conversationUrl}/messages`
     }
 
+    this.startTurnStatus(answer)
     try {
       completed = await this.readStream(response.body, answer, content, interrupted)
     } catch (error) {
@@ -185,6 +199,7 @@ export default class extends Controller {
     } finally {
       if (this.currentRequest === request) this.currentRequest = null
       this.syncAskButton()
+      this.stopTurnStatus()
     }
     // Only the index page visits on completion: the first exchange (or,
     // when steered, the exchange that carries the interruption) ends with
@@ -200,7 +215,6 @@ export default class extends Controller {
   // answer had streamed as interruption context. The reason, when the
   // server sent one, names the upstream failure.
   showRetry(content, interrupted, answer, reason) {
-    this.clearLiveDots()
     this.failed = { content, interrupted }
 
     const line = document.createElement("p")
@@ -232,12 +246,12 @@ export default class extends Controller {
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
     const turns = this.transcriptTarget.querySelectorAll("article")
     const answer = turns[turns.length - 1]
+    this.contentEl = answer.querySelector("div")
 
     await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null })
   }
 
   appendExchange(content) {
-    this.clearLiveDots()
     // First exchange: the greeting goes with your message, not with the
     // reply — the transcript top-aligns from here (empty-state centering
     // is my-auto on the card, which is gone or hidden by now).
@@ -259,23 +273,64 @@ export default class extends Controller {
     // Streamed text renders in final color from the start — no
     // provisional faint pass.
     this.contentEl = answer.querySelector("div")
-    this.showLiveDot(answer)
     return answer
   }
 
-  // The liveness device: a pulsing red dot inline in the COMRADE label —
-  // no node added or removed in the flow, so nothing shifts. Up at stream
-  // start, gone at [DONE], failure, or steering.
-  showLiveDot(answer) {
-    const label = answer.querySelector("p")
-    if (!label.querySelector(".live-dot")) {
-      label.insertAdjacentHTML("beforeend",
-        '<span class="live-dot ml-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-soviet"></span>')
-    }
+  // The foreman's status: a pulsing dot, the newest phase, and a running
+  // clock on one quiet line under the COMRADE label; a click expands the
+  // full timestamped log. Up when the stream opens, gone when it ends —
+  // completion, failure, or steering (the stream call's finally).
+  startTurnStatus(answer) {
+    this.turnT0 = Date.now()
+    this.turnPhase = "thinking"
+    this.turnLaneLabel = ""
+    this.turnLog = []
+    this.sawToken = false
+    this.statusEl = document.createElement("p")
+    this.statusEl.className = "turn-status flex cursor-pointer items-center gap-2 text-xs text-neutral-500"
+    this.statusEl.dataset.action = "stream-reader#toggleTurnLog"
+    this.statusEl.innerHTML =
+      '<span class="live-dot inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-soviet"></span>' +
+      '<span class="turn-status-text grow"></span>'
+    this.statusClock = this.statusEl.querySelector(".turn-status-text")
+    answer.querySelector("p").after(this.statusEl)
+    this.renderTurnStatus()
+    this.turnTimer = setInterval(() => this.renderTurnStatus(), 1000)
   }
 
-  clearLiveDots() {
-    this.element.querySelectorAll(".live-dot").forEach((el) => { el.remove() })
+  renderTurnStatus() {
+    const seconds = Math.floor((Date.now() - this.turnT0) / 1000)
+    const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+    this.statusClock.textContent = [this.turnLaneLabel, this.turnPhase, clock].filter(Boolean).join(" · ")
+  }
+
+  // Log entries are stamped against the turn's clock and kept as plain
+  // text — model names, queries and URLs never touch innerHTML.
+  turnStamp(text) {
+    const seconds = Math.floor((Date.now() - this.turnT0) / 1000)
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} ${text}`
+  }
+
+  appendTurnLog(text) {
+    this.turnLog.push(text)
+    if (!this.logEl) {
+      this.logEl = document.createElement("pre")
+      this.logEl.className = "turn-log hidden mb-2 whitespace-pre-wrap border-l-2 border-soviet/40 pl-2 text-xs leading-relaxed text-neutral-500"
+      this.statusEl.after(this.logEl)
+    }
+    this.logEl.textContent = this.turnLog.join("\n")
+  }
+
+  toggleTurnLog() {
+    this.logEl?.classList.toggle("hidden")
+  }
+
+  stopTurnStatus() {
+    if (this.turnTimer) clearInterval(this.turnTimer)
+    this.turnTimer = null
+    this.statusEl?.remove()
+    this.statusEl = null
+    this.logEl = null
   }
 
   // "…" while a stream runs, "Ask" the moment there's a draft typed — a
@@ -300,7 +355,6 @@ export default class extends Controller {
   // End-of-stream pass for a steered-away answer: same formatting the
   // [DONE] path would run, on whatever text arrived.
   finishStream(answer) {
-    this.clearLiveDots()
     this.renderCitations(answer)
   }
 
@@ -329,7 +383,6 @@ export default class extends Controller {
       for (const event of events) {
         const data = event.replace(/^data: /, "")
         if (data === "[DONE]") {
-          this.clearLiveDots()
           this.renderCitations(answer)
           return true
         }
@@ -347,7 +400,6 @@ export default class extends Controller {
         // fresh page then visits the true transcript, a show page is
         // already on it.
         if (parsed.type === "duplicate") {
-          this.clearLiveDots()
           answer.remove()
           return true
         }
@@ -359,15 +411,32 @@ export default class extends Controller {
 
   // Returns true when the event carried citations.
   applyEvent(answer, event) {
-    if (event.type === "delta") {
-      // Text is final-color from the first delta; the live dot in the
-      // label is the only "still working" signal.
+    if (event.type === "start") {
+      // The foreman's opening entry: which lane the turn rides, the model
+      // on it, the pinned effort when there is one. A lane-less setup has
+      // no lane to name — the model speaks for itself.
+      this.turnLaneLabel = event.lane === "legacy" ? "" : `${event.lane} lane`
+      const parts = [this.turnLaneLabel, event.model, event.effort && `effort ${event.effort}`].filter(Boolean)
+      this.appendTurnLog(this.turnStamp(`turn accepted — ${parts.join(", ")}`))
+      this.renderTurnStatus()
+    } else if (event.type === "delta") {
+      // Text is final-color from the first delta; the status line's clock
+      // is the "still working" signal.
       this.contentEl.textContent += event.text
       this.partial += event.text
+      if (!this.sawToken) {
+        this.sawToken = true
+        this.appendTurnLog(this.turnStamp("first token"))
+      }
+      this.turnPhase = "writing"
+      this.renderTurnStatus()
     } else if (event.type === "tool") {
       // The finished run stops accumulating — the answer pass formats
-      // alone. The dot stays: the stream is still working.
+      // alone. The status line keeps ticking: the stream is still working.
       this.partial = ""
+      this.turnPhase = event.name === "web_search" ? "searching" : "fetching"
+      this.appendTurnLog(this.turnStamp(event.name === "web_search" ? `searched: ${event.query}` : `fetched: ${event.url}`))
+      this.renderTurnStatus()
       // Chips collect into one group div (matching the server render):
       // the group carries the outer spacing, chips are tight inside it.
       let group = answer.querySelector(".chip-group")
