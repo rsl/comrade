@@ -43,6 +43,12 @@ export default class extends Controller {
   turnLaneLabel = ""
   turnLog = []
   sawToken = false
+  // Footer suppression: once the accumulated partial grows a line starting
+  // "Sources:", the visible preview freezes at the footer's onset and the
+  // raw footer text never streams in loud — the completion render rebuilds
+  // from `partial`, so nothing is missed, and prose that merely starts
+  // "Sources:" self-corrects there (the footer regex won't match it).
+  footerSeen = false
 
   connect() {
     // The transcript panel is the scroll surface (app shell: the document
@@ -155,6 +161,7 @@ export default class extends Controller {
   async stream(content, interrupted, answer, { retry }) {
     this.partial = ""
     this.pendingCitations = null
+    this.footerSeen = false
     this.clearOffers()
     const request = this.currentRequest = new AbortController()
     this.liveAnswer = answer
@@ -288,7 +295,11 @@ export default class extends Controller {
     this.sawToken = false
     this.statusEl = document.createElement("p")
     this.statusEl.className = "turn-status flex cursor-pointer items-center gap-2 text-xs text-neutral-500"
-    this.statusEl.dataset.action = "stream-reader#toggleTurnLog"
+    // The event is named explicitly: Stimulus's shorthand (identifier#method)
+    // resolves the event from the element's default (a → click, form →
+    // submit, …) and a <p> has none — the action throws "missing event
+    // name" inside the observer and silently never binds.
+    this.statusEl.dataset.action = "click->stream-reader#toggleTurnLog"
     this.statusEl.innerHTML =
       '<span class="live-dot inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-soviet"></span>' +
       '<span class="turn-status-text grow"></span>'
@@ -422,8 +433,8 @@ export default class extends Controller {
     } else if (event.type === "delta") {
       // Text is final-color from the first delta; the status line's clock
       // is the "still working" signal.
-      this.contentEl.textContent += event.text
       this.partial += event.text
+      this.showPartialTail()
       if (!this.sawToken) {
         this.sawToken = true
         this.appendTurnLog(this.turnStamp("first token"))
@@ -434,6 +445,7 @@ export default class extends Controller {
       // The finished run stops accumulating — the answer pass formats
       // alone. The status line keeps ticking: the stream is still working.
       this.partial = ""
+      this.footerSeen = false
       this.turnPhase = event.name === "web_search" ? "searching" : "fetching"
       this.appendTurnLog(this.turnStamp(event.name === "web_search" ? `searched: ${event.query}` : `fetched: ${event.url}`))
       this.renderTurnStatus()
@@ -456,6 +468,29 @@ export default class extends Controller {
       return event.citations.length > 0
     }
     return false
+  }
+
+  // Renders the streaming preview of the accumulated `partial`: what the
+  // completion render will keep, not what it will strip. Inline [n]
+  // markers vanish here the way they resolve into source chips there, and
+  // a trailing "[" or "[1" hides too — markers split across deltas. A
+  // bracket that turns out to be prose pops back at completion. Once the
+  // footer begins (a line starting "Sources:"), the preview freezes at
+  // the footer's onset; later deltas accumulate silently, and the
+  // completion render rebuilds from `partial` so nothing is missed.
+  showPartialTail() {
+    if (this.footerSeen) return
+    const onset = this.partial.search(/(^|\n)Sources:/)
+    if (onset !== -1) {
+      this.footerSeen = true
+      this.contentEl.textContent = this.visibleText(this.partial.slice(0, onset))
+      return
+    }
+    this.contentEl.textContent = this.visibleText(this.partial)
+  }
+
+  visibleText(text) {
+    return text.replace(/\[\d+\]/g, "").replace(/\[\d*\]$/, "")
   }
 
   // End-of-stream formatting: paragraphs split on blank lines, each
