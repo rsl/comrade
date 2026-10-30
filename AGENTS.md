@@ -153,9 +153,11 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
 - **Never commit without asking.** Commit style: active sentences
   ("Add …", "Fix …", "Wire up …"); a repo's first commit is "initial
   commit" with a body that tells the story. Granular commits — one logical
-  unit each. When a follow-up change belongs to the unpushed commit just
-  made (a fixup of it, or the same decision continuing), `--amend` into
-  it instead of adding a new commit; never amend a pushed commit.
+  unit each. When a follow-up change belongs to the last commit and it is
+  unpushed, amend it: `git commit --amend`, the last commit only. No
+  fixup commits, no autosquash, no rebase — if the change belongs to any
+  commit that isn't the last, it's just a new commit; never amend a
+  pushed commit.
   Approval to build a feature is not approval to commit it — a commit
   needs its own go-ahead (2026-10-24: a string of copy-tweak commits
   landed on rsl's mid-review word changes that weren't reviewed). Batch
