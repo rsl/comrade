@@ -10,4 +10,16 @@ class MessagesController < ApplicationController
     response.headers['Location'] = conversation_url(conversation)
     stream_reply(conversation)
   end
+
+  # The prompt inspector: the wire request an answer's turn rode,
+  # rebuilt from the transcript plus the current prompt file and prefs.
+  def prompt
+    @conversation = Conversation.for_enlistee(current_enlistee).find(params[:conversation_id])
+    message = @conversation.messages.find(params[:id])
+    raise ActiveRecord::RecordNotFound unless message.role == 'assistant'
+
+    stats = message.stats || {}
+    reply = Comrade::Reply.new(conversation: @conversation, content: '')
+    @request = reply.rebuilt_request(upto: message, model: stats['model'], effort: stats['effort'])
+  end
 end

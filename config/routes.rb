@@ -17,7 +17,11 @@ Rails.application.routes.draw do
       patch :archive
       patch :unarchive
     end
-    resources :messages, only: [:create]
+    resources :messages, only: [:create] do
+      member do
+        get :prompt
+      end
+    end
   end
 
   # Identity: one door, singular resource. create enlists or claims (the

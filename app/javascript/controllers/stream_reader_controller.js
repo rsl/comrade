@@ -164,6 +164,7 @@ export default class extends Controller {
     this.partial = ""
     this.pendingCitations = null
     this.pendingStats = null
+    this.pendingStatsId = null
     this.footerSeen = false
     this.clearOffers()
     const request = this.currentRequest = new AbortController()
@@ -510,8 +511,10 @@ export default class extends Controller {
     } else if (event.type === "stats") {
       // The same numbers the server persists on the row — the footer
       // segment renders from these so the live render and the reload
-      // match byte for byte.
+      // match byte for byte. The row id rides the event (wire-only, the
+      // jsonb stays clean) so the footer's prompt link can target the row.
       this.pendingStats = event.stats
+      this.pendingStatsId = event.id
     }
     return false
   }
@@ -664,10 +667,18 @@ export default class extends Controller {
     return `${(ms / 1000).toFixed(1)}s`
   }
 
+  // The prompt-inspector link riding the stats segment — byte-twin of
+  // prompt_link in conversations_helper.rb; the row id arrives on the
+  // stats event.
+  promptLink() {
+    if (!this.pendingStatsId) return ""
+    return ` · <a href="${this.conversationUrl}/messages/${this.pendingStatsId}/prompt" class="prompt-link cursor-pointer underline hover:text-neutral-300">prompt</a>`
+  }
+
   get ownKnowledgeHtml() {
     // Must stay byte-identical with _message.html.erb's double_check footer:
     // the post-first-reply Turbo.visit swaps one for the other.
-    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">From model knowledge' + this.statsSegment() + '<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
+    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">From model knowledge' + this.statsSegment() + this.promptLink() + '<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }
@@ -676,7 +687,7 @@ export default class extends Controller {
   // line carries the action. Byte-identical with _message.html.erb's
   // break_down branch.
   get breakDownHtml() {
-    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.statsSegment() + '<a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
+    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.statsSegment() + this.promptLink() + '<a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }

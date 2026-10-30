@@ -29,6 +29,18 @@ module ConversationsHelper
     "#{ (milliseconds.to_f / 1000).round(1) }s"
   end
 
+  # The prompt-inspector link riding the stats segment: every answer
+  # carrying stats gets one. Byte-twin of the stream reader's promptLink —
+  # the row id arrives on the stats event there.
+  def prompt_link(message)
+    return '' if message.stats.blank?
+
+    path = prompt_conversation_message_path(message.conversation_id, message)
+    # safe_join, not string interpolation: interpolation strips link_to's
+    # safety flag and ERB would escape the anchor into visible text.
+    safe_join([' · ', link_to('prompt', path, class: 'prompt-link cursor-pointer underline hover:text-neutral-300')])
+  end
+
   # The id of the conversation's most recent answer carrying stats — the
   # only turn whose foreman's status line has a target. Steered partials
   # persist stats-less, so the line lands on the last completed answer.

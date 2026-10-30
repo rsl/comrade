@@ -122,6 +122,16 @@ module Comrade
       @conversation.messages.create!(role: role, content: content, **fields)
     end
 
+    # The wire request, rebuilt after the fact for the prompt inspector:
+    # the current prompt file and prefs layered over the transcript before
+    # the given answer row (tool frames of the turn included), with the
+    # model/effort the row's stats recorded. A reconstruction, not a
+    # snapshot — the transcript part is exact, the two config pieces read
+    # as they are now.
+    def rebuilt_request(upto:, model:, effort:)
+      wire_request(model: model, effort: effort).merge(messages: rebuilt_messages(upto))
+    end
+
     private
 
     # The stream sink: everything the answer pass emits crosses this. Nil
@@ -291,9 +301,12 @@ module Comrade
 
     def persist_answer(content, citations)
       citations = citations.uniq { |citation| citation[:url] }.presence
-      append_message(role: 'assistant', content: content, citations: citations, stats: turn_stats)
+      row = append_message(role: 'assistant', content: content, citations: citations, stats: turn_stats)
       yielder << { type: 'citations', citations: citations || [] } if citations
-      yielder << { type: 'stats', stats: turn_stats } if turn_stats
+      # The row id rides the event (not the persisted stats) so the live
+      # render's prompt link can target the row — the reload twin links
+      # from the row itself.
+      yielder << { type: 'stats', stats: turn_stats, id: row.id } if turn_stats
     end
 
     # What the turn rode and how long it took — provenance that survives
@@ -407,18 +420,31 @@ module Comrade
     end
 
     def payload(tool_definitions: DEFINITIONS, final_instruction: nil)
+      request = wire_request(model: turn_lane.model, effort: turn_lane.effort, final_instruction: final_instruction)
+      request[:tools] = tool_definitions
+      request
+    end
+
+    # The request body's shape — shared by the live payload and the
+    # prompt inspector's reconstruction. `final_instruction` rides only
+    # on the cap pass; `tools` is swapped per call (the cap pass offers
+    # none).
+    def wire_request(model:, effort:, final_instruction: nil)
       messages = [{ role: 'system', content: prompt }, prefs_message].compact
-      messages.concat(@conversation.to_transcript)
       messages << { role: 'system', content: final_instruction } if final_instruction
       request = {
-        model: turn_lane.model,
+        model: model,
         messages: messages,
-        tools: tool_definitions,
+        tools: DEFINITIONS,
         stream: true,
         max_tokens: 8192,
       }
-      request[:reasoning_effort] = turn_lane.effort if turn_lane.effort
+      request[:reasoning_effort] = effort if effort
       request
+    end
+
+    def rebuilt_messages(upto)
+      [{ role: 'system', content: prompt }, prefs_message].compact + @conversation.to_transcript(before: upto)
     end
 
     # Prefs ride as a second system message layered after the base prompt —
