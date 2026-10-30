@@ -56,7 +56,7 @@
       <% end %>
     <% end %>
     <% grouped_turns(messages).each do |message, tool_notes| %>
-      <%= message_turn(message, tool_notes:, double_check: message.id == double_check_id(messages), break_down: message.id == break_down_id(messages)) %>
+      <%= message_turn(message, tool_notes:, double_check: message.id == double_check_id(messages), break_down: message.id == break_down_id(messages), turn_log: message.id == turn_status_id(messages)) %>
     <% end %>
   <% end %>
   <%= tag.div class: class_names('shrink-0 bg-ground/90 pb-6 pt-2 backdrop-blur', 'p-0': gated) do %>

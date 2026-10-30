@@ -29,8 +29,41 @@ module ConversationsHelper
     "#{ (milliseconds.to_f / 1000).round(1) }s"
   end
 
-  def message_turn(message, tool_notes:, double_check:, break_down:)
-    render 'message', message:, tool_notes:, double_check:, break_down:
+  # The id of the conversation's most recent answer carrying stats — the
+  # only turn whose foreman's status line has a target. Steered partials
+  # persist stats-less, so the line lands on the last completed answer.
+  def turn_status_id(messages)
+    messages.reverse.detect { |turn| turn.role == 'assistant' && turn.stats.present? }&.id
+  end
+
+  # The foreman's status line and its log, on the latest answer carrying
+  # stats — the reload twin of the render the stream reader leaves behind
+  # at completion: a quiet line (lane, the turn's total) that clicks open
+  # the timestamped log the server accumulated during the turn.
+  # Byte-identical with the stream reader's completeTurnStatus.
+  def turn_status(message)
+    stats = message.stats
+    dot = tag.span(class: 'live-dot inline-block h-1.5 w-1.5 rounded-full bg-soviet')
+    text = tag.span(turn_status_text(stats), class: 'turn-status-text grow')
+    line = tag.p(dot + text,
+      class: 'turn-status flex cursor-pointer items-center gap-2 text-xs text-neutral-500',
+      data: { action: 'click->stream-reader#toggleTurnLog' },)
+    log = tag.pre(stats['log'].join("\n"),
+      class: 'turn-log hidden mb-2 whitespace-pre-wrap border-l-2 border-soviet/40 ' \
+             'pl-2 text-xs leading-relaxed text-neutral-500',)
+    line + log
+  end
+
+  def turn_status_text(stats)
+    [stats['lane'] && "#{ stats['lane'] } lane", turn_clock(stats['total_ms'])].compact.join(' · ')
+  end
+
+  def turn_clock(milliseconds)
+    format('%<m>d:%<ss>02d', m: milliseconds.to_i / 60_000, ss: milliseconds.to_i / 1000 % 60)
+  end
+
+  def message_turn(message, tool_notes:, double_check:, break_down:, turn_log: false)
+    render 'message', message:, tool_notes:, double_check:, break_down:, turn_log:
   end
 
   # The id of the conversation's most recent memory answer - the only turn

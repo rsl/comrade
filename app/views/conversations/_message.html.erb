@@ -26,6 +26,13 @@
     <% else %>
       <div class="leading-relaxed whitespace-pre-wrap"><%= message.content.strip %></div>
     <% end %>
+    <%# The foreman's status line and log, on the latest answer carrying
+        stats: the reload twin of what the stream reader leaves behind at
+        completion. Sits between the answer and its action line, matching
+        the client render's order. %>
+    <% if turn_log %>
+      <%= turn_status(message) %>
+    <% end %>
     <% if message.role == 'assistant' %>
       <%# The line under the answer: where it came from, and the actions.
           Memory answers name their knowledge; the latest answer alone

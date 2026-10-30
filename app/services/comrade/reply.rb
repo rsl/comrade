@@ -99,6 +99,10 @@ module Comrade
         # The turn's clock: everything the stats carry (first token, total)
         # measures from here, when the client's own foreman's clock starts.
         @t_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        # The foreman's log: the same timestamped lines the client's status
+        # narrates, kept server-side and persisted in stats — the log the
+        # reload renders, and the one the completed client render swaps to.
+        @turn_log = []
         # The foreman's opening entry: which lane the turn rides, before any
         # model bytes flow — the reader's status line hangs its phase
         # narration and clock on this. Building the lane here also keeps a
@@ -109,6 +113,7 @@ module Comrade
                      lane: turn_lane.kind,
                      model: turn_lane.model,
                      effort: turn_lane.effort, }.compact
+        log_turn("turn accepted — #{ accepted_parts }")
         stream_into
       end
     end
@@ -204,7 +209,10 @@ module Comrade
       content << text
       return if text.empty?
 
-      @first_token_ms ||= elapsed_ms
+      unless @first_token_ms
+        @first_token_ms = elapsed_ms
+        log_turn('first token')
+      end
       yielder << { type: 'delta', text: text }
     end
 
@@ -231,10 +239,21 @@ module Comrade
     end
 
     def execute_tool(name, arguments, offset)
+      log_turn(tool_log_line(name, arguments))
       yielder << { type: 'tool', name: name }.merge(arguments)
       dispatch_tool(name, arguments, offset)
     rescue JSON::ParserError
       ['Invalid tool arguments', []]
+    end
+
+    # The foreman's log line for a tool round — the same words the client
+    # writes when the tool event arrives ("searched: x" / "fetched: y").
+    def tool_log_line(name, arguments)
+      if name == 'web_search'
+        "searched: #{ arguments['query'] }"
+      else
+        "fetched: #{ arguments['url'] }"
+      end
     end
 
     def dispatch_tool(name, arguments, offset)
@@ -291,7 +310,24 @@ module Comrade
         effort: turn_lane.effort,
         first_token_ms: @first_token_ms,
         total_ms: elapsed_ms,
+        log: @turn_log.presence,
       }.compact
+    end
+
+    # The foreman's log lines: what the turn did, stamped against the
+    # turn's clock. Persisted in stats, rendered by both renders.
+    def log_turn(text)
+      @turn_log << "#{ turn_clock(elapsed_ms) } #{ text }"
+    end
+
+    def accepted_parts
+      [turn_lane.kind == 'legacy' ? nil : "#{ turn_lane.kind } lane",
+       turn_lane.model,
+       turn_lane.effort && "effort #{ turn_lane.effort }",].compact.join(', ')
+    end
+
+    def turn_clock(milliseconds)
+      format('%<m>d:%<ss>02d', m: milliseconds.to_i / 60_000, ss: milliseconds.to_i / 1000 % 60)
     end
 
     def elapsed_ms

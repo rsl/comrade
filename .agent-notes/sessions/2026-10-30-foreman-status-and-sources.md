@@ -76,15 +76,15 @@ amend-rule rewording and this handoff. Pushing is rsl's.**
 
 ## Open items → registries
 
-- **Foreman's log persistence (designed, approved in discussion, not
-  built)**: the log dies with the turn today; rsl wants it clickable
-  post-completion. Design: server accumulates the same timestamped lines
-  and stores them in `stats.log`; client keeps the status line on
-  completion (failure/steering still tear down), swapping its live log
-  for the persisted one at `[DONE]`; `_message.html.erb` renders the
-  counterpart on the latest answer carrying stats (pixel-identity
-  contract); `toggleTurnLog` moves from the instance field to a DOM
-  query. In `roadmap.md`.
+- **Foreman's log persistence — BUILT after this handoff was written**
+  (same day, same branch): the server accumulates the same timestamped
+  lines into `stats.log`; the status line survives completion (failure
+  and steering still tear it down), swapping its live log for the
+  persisted one at `[DONE]`; `_message.html.erb` renders the counterpart
+  on the latest answer carrying stats (byte-identical twins, verified
+  across the Turbo.visit swap); `toggleTurnLog` reads from the clicked
+  line's article, so server-rendered status lines toggle with no
+  controller state behind them.
 - Real-device re-verify, copy tweaking stage, preamble permanent home,
   dead-code riders, stray iOS caret (prior items, unchanged, in
   `roadmap.md`).

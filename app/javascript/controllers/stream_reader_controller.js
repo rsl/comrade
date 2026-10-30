@@ -33,10 +33,10 @@ export default class extends Controller {
   // turn runs — the newest phase with a running clock, pinned to the
   // answer's growing edge — expandable into the full timestamped log. It
   // replaces the old live dot as the liveness device, rides events the
-  // wire already sends, and dies with the turn: the server render has no
-  // counterpart, so it must not survive the Turbo.visit swap
-  // (pixel-identity contract); the footer's stats segment is what
-  // survives.
+  // wire already sends. Completion keeps it — clock frozen to the
+  // server's total, log swapped for the persisted one — and the server
+  // render is its reload twin; failure and steering still tear it down
+  // (nothing persisted to show).
   statusEl = null
   logEl = null
   turnTimer = null
@@ -209,7 +209,9 @@ export default class extends Controller {
     } finally {
       if (this.currentRequest === request) this.currentRequest = null
       this.syncAskButton()
-      this.stopTurnStatus()
+      // Completion keeps the status line (the reload twin renders it);
+      // failure and steering tear it down.
+      if (!completed) this.stopTurnStatus()
     }
     // Only the index page visits on completion: the first exchange (or,
     // when steered, the exchange that carries the interruption) ends with
@@ -289,15 +291,18 @@ export default class extends Controller {
   // The foreman's status: a pulsing dot, the newest phase, and a running
   // clock on one quiet line BELOW the streaming text — pinned to the
   // answer's growing edge, where the reader is looking. A click expands
-  // the full timestamped log. Up when the stream opens, gone when it
-  // ends — completion, failure, or steering (the stream call's finally);
-  // the stats segment in the footer is what survives.
+  // the full timestamped log. Up when the stream opens; completion keeps
+  // it (completeTurnStatus), failure and steering tear it down (the
+  // stream call's finally).
   startTurnStatus(answer) {
     this.turnT0 = Date.now()
     this.turnPhase = "thinking"
     this.turnLaneLabel = ""
     this.turnLog = []
     this.sawToken = false
+    // A completed prior turn leaves its log element behind (its status
+    // line survives); the new turn's log starts fresh below its own line.
+    this.logEl = null
     this.statusEl = document.createElement("p")
     this.statusEl.className = "turn-status flex cursor-pointer items-center gap-2 text-xs text-neutral-500"
     // The event is named explicitly: Stimulus's shorthand (identifier#method)
@@ -318,16 +323,22 @@ export default class extends Controller {
   }
 
   renderTurnStatus() {
-    const seconds = Math.floor((Date.now() - this.turnT0) / 1000)
-    const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
-    this.statusClock.textContent = [this.turnLaneLabel, this.turnPhase, clock].filter(Boolean).join(" · ")
+    this.statusClock.textContent =
+      [this.turnLaneLabel, this.turnPhase, this.turnClock(Date.now() - this.turnT0)].filter(Boolean).join(" · ")
+  }
+
+  // The m:ss clock both the status line and the log's stamps read —
+  // client-side against turnT0 while the turn runs, server-side from
+  // total_ms once it's done (byte-identical twins).
+  turnClock(milliseconds) {
+    const seconds = Math.floor(milliseconds / 1000)
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
   }
 
   // Log entries are stamped against the turn's clock and kept as plain
   // text — model names, queries and URLs never touch innerHTML.
   turnStamp(text) {
-    const seconds = Math.floor((Date.now() - this.turnT0) / 1000)
-    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} ${text}`
+    return `${this.turnClock(Date.now() - this.turnT0)} ${text}`
   }
 
   appendTurnLog(text) {
@@ -340,8 +351,27 @@ export default class extends Controller {
     this.logEl.textContent = this.turnLog.join("\n")
   }
 
-  toggleTurnLog() {
-    this.logEl?.classList.toggle("hidden")
+  toggleTurnLog(event) {
+    // The log is found from the clicked line, not an instance field: the
+    // server render's status lines (older turns after a reload) carry the
+    // same action with no controller state behind them.
+    event.currentTarget.closest("article")?.querySelector(".turn-log")?.classList.toggle("hidden")
+  }
+
+  // Completion keeps the status line: the dot stops pulsing, the clock
+  // freezes to the server's own total, and the live log swaps for the
+  // persisted one — what a reload renders. Pure function of the stats
+  // event, so the live render and the reload match byte for byte.
+  completeTurnStatus() {
+    if (this.turnTimer) clearInterval(this.turnTimer)
+    this.turnTimer = null
+    const stats = this.pendingStats
+    if (!stats || !this.statusEl) return
+    this.statusEl.querySelector(".live-dot")?.classList.remove("animate-pulse")
+    this.statusClock.textContent =
+      [stats.lane && `${stats.lane} lane`, this.turnClock(stats.total_ms)].filter(Boolean).join(" · ")
+    const log = this.statusEl.closest("article")?.querySelector(".turn-log")
+    if (log && stats.log) log.textContent = stats.log.join("\n")
   }
 
   stopTurnStatus() {
@@ -402,6 +432,9 @@ export default class extends Controller {
       for (const event of events) {
         const data = event.replace(/^data: /, "")
         if (data === "[DONE]") {
+          // Completion swaps the foreman's status to its persisted form
+          // before the citation render consumes the stats event.
+          this.completeTurnStatus()
           this.renderCitations(answer)
           return true
         }
