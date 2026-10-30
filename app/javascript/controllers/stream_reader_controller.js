@@ -493,11 +493,27 @@ export default class extends Controller {
       return "\n"
     })
 
-    content.innerHTML = body.split(/\n\n+/).map((paragraph) => {
+    // Deep-lane drift fallback (twin of footer_fallback in
+    // conversations_helper.rb): the model declared a footer but resolved
+    // no inline markers — the footer's own declared list becomes a
+    // trailing chip line, resolved and deduped exactly like the
+    // per-paragraph chips.
+    const footerSources = Object.keys(markerSources)
+      .sort((a, b) => a - b)
+      .map((n) => {
+        const cited = markerSources[n]
+        const citation = citations.find((c) => c.url === cited.url)
+        return citation || { url: cited.url, title: cited.title || new URL(cited.url).host }
+      })
+      .filter((source, index, all) => all.findIndex((s) => s.url === source.url) === index)
+
+    let resolved = false
+    const html = body.split(/\n\n+/).map((paragraph) => {
       const urls = []
       const plain = this.sansSup(this.sansRangeMarkers(paragraph)).replace(/\[(\d+)\]/g, (marker, n) => {
         const cited = markerSources[parseInt(n)]
         if (!cited) return marker
+        resolved = true
         const citation = citations.find((c) => c.url === cited.url)
         urls.push(citation || { url: cited.url, title: cited.title || new URL(cited.url).host })
         return ""
@@ -506,6 +522,8 @@ export default class extends Controller {
       const block = marked.parse(escape(plain), { breaks: true })
       return `<div class="mb-3 last:mb-0">${block}</div>${chips}`
     }).join("")
+    if (footerSources.length && !resolved) html += this.sourceChips(footerSources, escape)
+    content.innerHTML = html
     if (!citations.length) {
       answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
     } else {
