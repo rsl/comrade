@@ -4,16 +4,18 @@ class ConversationsController < ApplicationController
   def index
     @archived = params[:archived].present?
     @conversations = if @archived
-      Conversation.archived.for_enlistee(current_enlistee).order(:archived_at)
+      Conversation.archived.for_enlistee(current_enlistee).order(created_at: :desc)
     else
       Conversation.live.for_enlistee(current_enlistee).order(id: :desc).limit(20)
     end
   end
 
   # The archive listing — read-only titles, the only door to destroy.
+  # Ordered by creation, not by when it was archived: when the reader
+  # asked is the human order, matching the live list.
   def archived
     @archived = true
-    @conversations = Conversation.archived.for_enlistee(current_enlistee).order(:archived_at)
+    @conversations = Conversation.archived.for_enlistee(current_enlistee).order(created_at: :desc)
   end
 
   def show

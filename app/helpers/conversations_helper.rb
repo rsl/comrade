@@ -86,6 +86,27 @@ module ConversationsHelper
     messages.reverse.detect { |turn| turn.role == 'assistant' && turn.content.present? }&.id
   end
 
+  # The archive page's buckets, in encounter order over the created_at-desc
+  # list: Today, Yesterday, then Monday-anchored weeks ("Week of Oct 26" —
+  # the current week included; only Today and Yesterday get named). When
+  # the reader asked is the grouping the page shows.
+  def archived_groups(conversations)
+    groups = {}
+    conversations.each do |conversation|
+      label = archive_bucket(conversation.created_at.to_date)
+      (groups[label] ||= []) << conversation
+    end
+    groups
+  end
+
+  def archive_bucket(date)
+    today = Date.current
+    return 'Today' if date == today
+    return 'Yesterday' if date == today - 1
+
+    "Week of #{ date.beginning_of_week.strftime('%b %-d') }"
+  end
+
   # One transcript turn: a message plus the tool chips that answer into
   # it. Consecutive tool rows group into the following non-tool message; a
   # tool_calls frame with no spoken content renders nothing and must not
