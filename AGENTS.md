@@ -158,11 +158,17 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
   fixup commits, no autosquash, no rebase — if the change belongs to any
   commit that isn't the last, it's just a new commit; never amend a
   pushed commit.
-  Approval to build a feature is not approval to commit it — a commit
-  needs its own go-ahead (2026-10-24: a string of copy-tweak commits
-  landed on rsl's mid-review word changes that weren't reviewed). Batch
+  A commit happens only when rsl says the word — an explicit "commit"
+  (or equivalent) addressed at committing. Approval to build, verify, or
+  finish a task never licenses one, and a general "do it all" doesn't
+  cover commits either: when in doubt, bring the work and stop short of
+  the commit. (2026-10-24: a string of copy-tweak commits landed on
+  rsl's mid-review word changes that weren't reviewed.) Batch
   the small changes and bring them as one ask; unpushed commits
-  accumulate on the branch, which is what it's for.
+  accumulate on the branch, which is what it's for. And no prodding:
+  the uncommitted state gets named when the work is delivered, once,
+  then it stays named — no reminders at the end of every reply. The
+  branch is the reminder; rsl knows what's sitting there.
 - **`main` changes only through pull requests** (branch rules enforce it —
   direct pushes are rejected). Branch with `git co -b <name>` on a fetched,
   up-to-date `main` — never off `origin/main` (the upstream would target
