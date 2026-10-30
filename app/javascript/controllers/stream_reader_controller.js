@@ -341,6 +341,16 @@ export default class extends Controller {
           this.showRetry(content, interrupted, answer, parsed.message)
           return false
         }
+        // The server recognized this retry as an already-answered turn:
+        // the original stream died after persisting its full answer. The
+        // empty retry turn goes, and the stream counts as complete — a
+        // fresh page then visits the true transcript, a show page is
+        // already on it.
+        if (parsed.type === "duplicate") {
+          this.clearLiveDots()
+          answer.remove()
+          return true
+        }
         if (this.applyEvent(answer, parsed)) sawCitations = true
         this.scrollToBottom()
       }

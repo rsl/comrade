@@ -28,18 +28,66 @@ module StreamsReply
   def stream_reply(conversation)
     count_calibration_signal
     set_stream_headers
+    content = params.require(:content)
     # :reek:ControlParameter — the request picks the entry point; that is
     # the controller's job.
     reply = if ActiveModel::Type::Boolean.new.cast(params[:retry])
-      Comrade::Reply.call_retry(conversation: conversation,
-        content: params.require(:content),
-        interrupted: params[:interrupted],)
+      retry_reply(conversation, content)
     else
       Comrade::Reply.call(conversation: conversation,
-        content: params.require(:content),
+        content: content,
         interrupted: params[:interrupted],)
     end
     self.response_body = reply_enumerator(reply)
+  end
+
+  # A retry re-sends a turn the client believes failed — but the client
+  # can't tell a connection that died after the server finished from a
+  # server that died mid-answer. The database can, so the retry is a
+  # three-way call:
+  #   - the turn was never stored (the request was lost before
+  #     persistence): the normal path, which persists the user message
+  #     before streaming — the retry repairs itself instead of answering
+  #     a question the transcript will never show;
+  #   - stored and already answered (an assistant row with content after
+  #     it): a duplicate no-op — the client discards its empty retry turn
+  #     and a fresh page visits the true transcript;
+  #   - stored, unanswered (only tool rows behind it): the genuine retry —
+  #     call_retry, user persistence skipped.
+  def retry_reply(conversation, content)
+    case retry_case(conversation, content)
+    when :missing
+      Comrade::Reply.call(conversation: conversation,
+        content: content,
+        interrupted: params[:interrupted],)
+    when :answered
+      duplicate_stream
+    else
+      Comrade::Reply.call_retry(conversation: conversation,
+        content: content,
+        interrupted: params[:interrupted],)
+    end
+  end
+
+  # Where the retried turn stands, from the transcript's own record.
+  # Safe navigation carries the no-user-message case: a nil strip is
+  # never equal to real content, so it reads as :missing.
+  def retry_case(conversation, content)
+    last_user = conversation.messages.where(role: 'user').last
+    return :missing if last_user&.content&.strip != content.strip
+
+    answered = conversation.messages.where(role: 'assistant')
+      .where('id > ? AND content IS NOT NULL', last_user.id).exists?
+    answered ? :answered : :pending
+  end
+
+  # The already-answered retry: no new work, just the events the client
+  # needs to treat the turn as complete.
+  def duplicate_stream
+    Enumerator.new do |yielder|
+      yielder << "data: #{ { type: 'duplicate' }.to_json }\n\n"
+      yielder << "data: [DONE]\n\n"
+    end
   end
 
   def set_stream_headers
