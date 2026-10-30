@@ -137,6 +137,11 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
   ruby-platform gem over the binary one (noted in the 2026-10-22
   chat-UI handoff). Override per invocation —
   `BUNDLE_FORCE_RUBY_PLATFORM=false bin/rails tailwindcss:build`.
+- `bin/dev`'s Rails process can silently fail to reload service-class
+  changes mid-session (2026-10-30: a reply failed with no server-side
+  exception logged; a restart picked the code up and the identical turn
+  passed). If a reply fails without a reason and the log shows nothing,
+  `bin/dev restart` before archaeology.
 - (grows as they're hit — add on discovery, with the date)
 
 ## Working agreement
