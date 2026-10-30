@@ -7,6 +7,28 @@ module ConversationsHelper
     render 'chat', endpoint:, fresh:, conversation:, messages:
   end
 
+  # The provenance segment of the answer's footer line: which lane wrote
+  # it, the model on it, and the turn's timings — from the row's stats
+  # jsonb. Empty when the row carries none (steered partials, older
+  # answers). Byte-identical with the stream reader's statsSegment; the
+  # post-first-reply Turbo.visit swaps one for the other.
+  def stats_segment(message)
+    stats = message.stats
+    return '' if stats.blank?
+
+    segments = { lane: "#{ stats['lane'] } lane",
+                 model: stats['model'],
+                 effort: "effort #{ stats['effort'] }",
+                 first_token_ms: "first token #{ stat_seconds(stats['first_token_ms']) }",
+                 total_ms: "total #{ stat_seconds(stats['total_ms']) }", }
+    rendered = segments.filter_map { |key, text| text if stats[key.to_s] }
+    rendered.empty? ? '' : " · #{ rendered.join(' · ') }"
+  end
+
+  def stat_seconds(milliseconds)
+    "#{ (milliseconds.to_f / 1000).round(1) }s"
+  end
+
   def message_turn(message, tool_notes:, double_check:, break_down:)
     render 'message', message:, tool_notes:, double_check:, break_down:
   end

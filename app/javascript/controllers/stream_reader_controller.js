@@ -161,6 +161,7 @@ export default class extends Controller {
   async stream(content, interrupted, answer, { retry }) {
     this.partial = ""
     this.pendingCitations = null
+    this.pendingStats = null
     this.footerSeen = false
     this.clearOffers()
     const request = this.currentRequest = new AbortController()
@@ -466,6 +467,11 @@ export default class extends Controller {
     } else if (event.type === "citations") {
       this.pendingCitations = event.citations
       return event.citations.length > 0
+    } else if (event.type === "stats") {
+      // The same numbers the server persists on the row — the footer
+      // segment renders from these so the live render and the reload
+      // match byte for byte.
+      this.pendingStats = event.stats
     }
     return false
   }
@@ -565,6 +571,7 @@ export default class extends Controller {
       answer.insertAdjacentHTML("beforeend", this.breakDownHtml)
     }
     this.pendingCitations = null
+    this.pendingStats = null
   }
 
   // The model sometimes copies the interface's superscript markup into
@@ -597,10 +604,30 @@ export default class extends Controller {
     return `<p class="mb-1 text-xs text-neutral-500">— ${label}</p>`
   }
 
+  // The provenance segment of the answer's footer line, from the server's
+  // stats event — the same numbers the row persists, so the live render
+  // and the reload match byte for byte. Byte-identical with
+  // stats_segment in conversations_helper.rb.
+  statsSegment() {
+    const stats = this.pendingStats
+    if (!stats) return ""
+    const parts = []
+    if (stats.lane) parts.push(`${stats.lane} lane`)
+    if (stats.model) parts.push(stats.model)
+    if (stats.effort) parts.push(`effort ${stats.effort}`)
+    if (stats.first_token_ms) parts.push(`first token ${this.statSeconds(stats.first_token_ms)}`)
+    if (stats.total_ms) parts.push(`total ${this.statSeconds(stats.total_ms)}`)
+    return parts.length ? ` · ${parts.join(" · ")}` : ""
+  }
+
+  statSeconds(ms) {
+    return `${(ms / 1000).toFixed(1)}s`
+  }
+
   get ownKnowledgeHtml() {
     // Must stay byte-identical with _message.html.erb's double_check footer:
     // the post-first-reply Turbo.visit swaps one for the other.
-    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">From model knowledge<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
+    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">From model knowledge' + this.statsSegment() + '<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }
@@ -609,7 +636,7 @@ export default class extends Controller {
   // line carries the action. Byte-identical with _message.html.erb's
   // break_down branch.
   get breakDownHtml() {
-    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500"><a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
+    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.statsSegment() + '<a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }

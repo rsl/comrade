@@ -96,6 +96,9 @@ module Comrade
     def enumerator
       Enumerator.new do |yielder|
         @yielder = yielder
+        # The turn's clock: everything the stats carry (first token, total)
+        # measures from here, when the client's own foreman's clock starts.
+        @t_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         # The foreman's opening entry: which lane the turn rides, before any
         # model bytes flow — the reader's status line hangs its phase
         # narration and clock on this. Building the lane here also keeps a
@@ -194,11 +197,15 @@ module Comrade
     # paragraph-split renders preserve them as phantom spacing, so while
     # nothing real has arrived yet, leading whitespace goes — one point
     # fixing the stream display, the persisted record, and both renders.
-    # Mid-answer newlines are never touched.
+    # Mid-answer newlines are never touched. The first real text is also
+    # the stats' first-token mark.
     def absorb_text(text, content)
       text = text.lstrip if content.blank?
       content << text
-      yielder << { type: 'delta', text: text } unless text.empty?
+      return if text.empty?
+
+      @first_token_ms ||= elapsed_ms
+      yielder << { type: 'delta', text: text }
     end
 
     def absorb_tool_call(tool_calls, fragment)
@@ -265,8 +272,30 @@ module Comrade
 
     def persist_answer(content, citations)
       citations = citations.uniq { |citation| citation[:url] }.presence
-      append_message(role: 'assistant', content: content, citations: citations)
+      append_message(role: 'assistant', content: content, citations: citations, stats: turn_stats)
       yielder << { type: 'citations', citations: citations || [] } if citations
+      yielder << { type: 'stats', stats: turn_stats } if turn_stats
+    end
+
+    # What the turn rode and how long it took — provenance that survives
+    # reloads and other devices, rendered in the answer's footer line by
+    # both renders (byte-identical twins). The lane is unlabeled for
+    # legacy: matching the foreman's log, the unsuffixed triple speaks
+    # for itself. Nil when the enumerator never ran.
+    def turn_stats
+      return unless @t_start
+
+      {
+        lane: turn_lane.kind == 'legacy' ? nil : turn_lane.kind,
+        model: turn_lane.model,
+        effort: turn_lane.effort,
+        first_token_ms: @first_token_ms,
+        total_ms: elapsed_ms,
+      }.compact
+    end
+
+    def elapsed_ms
+      ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - @t_start) * 1000).round
     end
 
     # read_body yields raw TCP chunks whose boundaries ignore SSE event
