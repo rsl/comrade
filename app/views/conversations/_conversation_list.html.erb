@@ -1,4 +1,6 @@
 <%# The conversation listing — the full Recent page and the archives share one shape: grouped by when they were asked (Today, Yesterday, Monday-anchored weeks), each row carrying its ask date and the conversation's whole first line. Row controls follow the listing: the all page archives or destroys, the archives unarchives or destroys. %>
+<%# The reserved title row, twin of the chat pages' (_chat.html.erb fresh, show.html.erb): same h-16 box, empty and aria-hidden — the listing's heading starts exactly where chat content does, so no Turbo.visit between the surfaces shifts the panel. Pinned above the scrolling section, like the chat title row. %>
+<div class="mx-auto h-16 max-w-3xl shrink-0 px-5 pt-10" aria-hidden="true"></div>
 <section class="mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10 pt-10">
   <%# The gold heading echoes the Comrade wordmark; the opposite listing sits across from it. %>
   <div class="mb-4 flex items-baseline justify-between">
