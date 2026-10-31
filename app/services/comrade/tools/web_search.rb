@@ -10,12 +10,10 @@ module Comrade
     # The upstream engines (brave, duckduckgo, google) throttle bursts hard —
     # a fast model can fire several searches a second and get everything
     # suspended, which reads to it as "no results" and invites more
-    # searching. So: a floor between searches, and one patient retry when a
-    # query comes back empty.
+    # searching. So: a floor between queries — Pacing, shared with image
+    # search — and one patient retry when a query comes back empty.
     class WebSearch
       RESULTS_LIMIT = 5
-      # Seconds between upstream queries.
-      MIN_SEARCH_INTERVAL = 1.0
       # Seconds before retrying an empty result set.
       THROTTLE_RETRY_DELAY = 4.0
 
@@ -25,25 +23,13 @@ module Comrade
         new(query: query).call
       end
 
-      # One pace floor for the whole process: parallel tool calls and
-      # streamed rounds all queue through it.
-      def self.pace
-        @lock ||= Mutex.new
-        @lock.synchronize do
-          @last_search ||= Time.at(0).utc
-          gap = Time.now.utc - @last_search
-          sleep(MIN_SEARCH_INTERVAL - gap) if gap < MIN_SEARCH_INTERVAL
-          @last_search = Time.now.utc
-        end
-      end
-
       def initialize(query:)
         @query = query
       end
 
       # :reek:TooManyStatements — the rescue is one coherent failure path.
       def call
-        self.class.pace
+        Pacing.pace
         results = fetch_results
         results = retry_after_throttle if results.empty?
         results.empty? ? 'No results found.' : present(results)
