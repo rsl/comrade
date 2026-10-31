@@ -709,7 +709,7 @@ export default class extends Controller {
     this.gateTarget.hidden = true
     this.greetingTarget.hidden = false
     this.formTarget.classList.remove("hidden")
-    document.querySelector("[data-gate-sidebar]")?.classList.remove("hidden")
+    document.querySelectorAll("[data-gate-sidebar]").forEach((el) => el.classList.remove("hidden"))
     // The ☰ carries the same gated-hidden as its sidebar and rides along.
     document.querySelector("[data-sidebar-drawer-target='toggle']")?.classList.remove("hidden")
     this.formTarget.elements.content.focus()

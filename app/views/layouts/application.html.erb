@@ -17,6 +17,7 @@
 
     <%# Restores the saved root font size before first paint (see font_scale_boot.js and the font-sizer controller). %>
     <%= javascript_include_tag 'font_scale_boot' %>
+    <%= javascript_include_tag 'sidebar_width_boot' %>
     <%= javascript_include_tag 'visual_viewport_boot' %>
     <%= stylesheet_link_tag :tailwind, "data-turbo-track": 'reload' %>
     <%= javascript_importmap_tags %>
@@ -37,13 +38,13 @@
         Desktop never sees either — the sidebar is persistent there. %>
     <%= tag.button '☰', aria: { label: 'Conversations' }, data: { 'sidebar-drawer-target': 'toggle', action: 'sidebar-drawer#toggle' },
           class: class_names('sm:hidden fixed left-3 top-3 z-30 cursor-pointer rounded bg-soviet/20 px-2 py-1 text-sm leading-none text-neutral-300 hover:bg-soviet/50', 'hidden': gated) %>
-    <div class="shell fixed left-0 right-0 top-0 flex flex-row-reverse">
+    <div class="shell fixed left-0 right-0 top-0 flex flex-row-reverse" data-controller="sidebar-resize">
       <%# The backdrop lives inside the shell: iOS Safari gives position:fixed
           elements their own stacking context, so a body-level backdrop would
           paint over the whole shell — drawer included (2026-10-24, "unviewably
           dark" on iPhone). Inside, the drawer's z-20 outranks it everywhere. %>
       <div data-sidebar-drawer-target="backdrop" class="fixed inset-0 z-10 hidden bg-black/60 sm:hidden"></div>
-      <%= tag.aside class: class_names('flex h-full w-[240px] shrink-0 flex-col overflow-y-auto bg-ground-raised px-[16px] py-[20px]', 'hidden': gated, 'max-sm:fixed max-sm:inset-y-0 max-sm:left-0 max-sm:z-20 max-sm:w-[min(300px,85vw)] max-sm:-translate-x-full max-sm:transition-transform max-sm:duration-200 max-sm:shadow-2xl': true), 'data-gate-sidebar': true, 'data-sidebar-drawer-target': 'drawer' do %>
+      <%= tag.aside class: class_names('flex h-full w-[var(--sidebar-width,240px)] shrink-0 flex-col overflow-y-auto bg-ground-raised px-[16px] py-[20px]', 'hidden': gated, 'max-sm:fixed max-sm:inset-y-0 max-sm:left-0 max-sm:z-20 max-sm:w-[min(300px,85vw)] max-sm:-translate-x-full max-sm:transition-transform max-sm:duration-200 max-sm:shadow-2xl': true), 'data-gate-sidebar': true, 'data-sidebar-drawer-target': 'drawer', 'data-sidebar-resize-target': 'aside' do %>
         <%# On narrow viewports this drawer opens over the content; on
             desktop it is the persistent sidebar. Same partials, two
             presentations. %>
@@ -96,6 +97,17 @@
           </div>
         </div>
       <% end %>
+
+      <%# The divider between content and sidebar drag-resizes the aside on
+          sm+ (iPad landscape and desktop) — see
+          sidebar_resize_controller.js. A faint always-visible hairline
+          (iPadOS often doesn't match hover: hover), tinting on hover
+          where that exists. It rides the gate: hidden until the reader
+          chooses, and max-sm:hidden structurally — narrow viewports
+          never see it. %>
+      <div data-sidebar-resize-target="divider" data-gate-sidebar="true"
+           data-action="pointerdown->sidebar-resize#drag dblclick->sidebar-resize#reset"
+           class="<%= class_names("max-sm:hidden relative w-[8px] shrink-0 cursor-col-resize touch-none select-none bg-white/5 hover:bg-soviet/40 after:absolute after:inset-y-0 after:left-[-8px] after:right-[-8px] after:content-['']", 'hidden': gated) %>"></div>
 
       <main class="flex h-full min-w-0 flex-1 flex-col">
         <%= yield %>
