@@ -1,1 +1,11 @@
-<%= chat_surface(endpoint: conversations_path, fresh: true) %>
+<%# Root is the chat surface; the mode params render the conversation listings — one action, two faces. %>
+<% if @archived || @all %>
+  <%= render 'conversations/conversation_list',
+        heading: @archived ? 'Archived conversations' : 'All conversations',
+        cross_link_label: @archived ? 'All' : 'Archived',
+        cross_link_path: @archived ? all_conversations_path : archived_conversations_path,
+        conversations: @conversations, archived: @archived,
+        empty_text: @archived ? 'Nothing archived.' : 'Nothing yet — ask above.' %>
+<% else %>
+  <%= chat_surface(endpoint: conversations_path, fresh: true) %>
+<% end %>

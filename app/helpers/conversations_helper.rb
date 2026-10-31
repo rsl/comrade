@@ -66,6 +66,15 @@ module ConversationsHelper
     line + log
   end
 
+  # The archive row's label: the conversation's whole first line — the
+  # prompt as asked, not the 50-char title. First non-blank line of the
+  # first user turn; the title stands in when the row has none.
+  def archive_line(conversation)
+    content = conversation.messages.where(role: 'user').order(:id).pick(:content)
+    line = content.to_s.lines.map(&:strip).detect(&:present?)
+    line.presence || conversation.title.presence || '(Untitled)'
+  end
+
   def turn_status_text(stats)
     [stats['lane'] && "#{ stats['lane'] } lane", turn_clock(stats['total_ms'])].compact.join(' · ')
   end
@@ -98,20 +107,21 @@ module ConversationsHelper
     messages.reverse.detect { |turn| turn.role == 'assistant' && turn.content.present? }&.id
   end
 
-  # The archive page's buckets, in encounter order over the created_at-desc
-  # list: Today, Yesterday, then Monday-anchored weeks ("Week of Oct 26" —
-  # the current week included; only Today and Yesterday get named). When
-  # the reader asked is the grouping the page shows.
-  def archived_groups(conversations)
+  # The conversation listings' buckets, in encounter order over the
+  # created_at-desc list: Today, Yesterday, then Monday-anchored weeks
+  # ("Week of Oct 26" — the current week included; only Today and
+  # Yesterday get named). When the reader asked is the grouping the page
+  # shows.
+  def time_groups(conversations)
     groups = {}
     conversations.each do |conversation|
-      label = archive_bucket(conversation.created_at.to_date)
+      label = time_bucket(conversation.created_at.to_date)
       (groups[label] ||= []) << conversation
     end
     groups
   end
 
-  def archive_bucket(date)
+  def time_bucket(date)
     today = Date.current
     return 'Today' if date == today
     return 'Yesterday' if date == today - 1

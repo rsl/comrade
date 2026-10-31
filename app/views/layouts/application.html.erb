@@ -56,7 +56,7 @@
         <%# Recents carry iOS-style list management: "Edit" flips the list into archive mode — rows grow a minus control. Archiving removes the row in place via Turbo Stream, so edit mode survives multi-archive; only archiving the conversation you're viewing falls back to a redirect. %>
         <section data-controller="sidebar-edit" class="mt-4">
           <div class="mb-2 flex items-baseline justify-between">
-            <h2 class="text-xs font-medium uppercase tracking-wide text-neutral-500">Conversations</h2>
+            <h2 class="text-xs font-medium uppercase tracking-wide text-neutral-500">Recent</h2>
             <button type="button" data-sidebar-edit-target="toggle" data-action="sidebar-edit#toggle" class="cursor-pointer text-xs text-neutral-500 hover:text-neutral-200">Edit</button>
           </div>
           <ul class="space-y-0.5">
@@ -72,9 +72,12 @@
           </ul>
         </section>
 
-        <% if Conversation.archived.for_enlistee(current_enlistee).exists? %>
-          <%= link_to 'Archives', archived_conversations_path, class: 'mt-6 text-xs text-neutral-500 hover:text-gold' %>
-        <% end %>
+        <div class="mb-2 mt-3 flex items-baseline justify-between">
+            <%= link_to 'All', all_conversations_path, class: 'text-xs text-neutral-500 hover:text-gold' %>
+            <% if Conversation.archived.for_enlistee(current_enlistee).exists? %>
+              <%= link_to 'Archived', archived_conversations_path, class: 'text-xs text-neutral-500 hover:text-gold' %>
+            <% end %>
+          </div>
 
         <%# Identity closes the sidebar: who you are, how comrade talks to
             you, and the text size — the personal cluster, pinned down. %>
