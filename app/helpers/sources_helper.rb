@@ -62,10 +62,13 @@ module SourcesHelper
   # Strips [n] markers from a paragraph and collects the source hashes
   # they resolve to — canonical citations where the url matches, bare
   # url/title pairs when the model cited something outside the list.
+  # The whitespace before a marker goes with it, so "word [3]." renders
+  # "word.", never "word ." — the marker sat between the space and the
+  # punctuation, and the space belongs to the marker, not the word.
   # :reek:TooManyStatements — the gsub block is one coherent scan.
   def paragraph_sources(paragraph, citations, marker_urls)
     sources = []
-    plain = paragraph.gsub(/\[(\d+)\]/) do
+    plain = paragraph.gsub(/\s*\[(\d+)\]/) do
       # The block's return value is the replacement text: each marker
       # vanishes from the rendered paragraph, and only its source hash
       # (collected above, when it resolves) survives into the chips.
@@ -117,9 +120,11 @@ module SourcesHelper
 
   # Range-shaped citation markers ("[1–5]", "[1]–[3]") resolve to no
   # single source, so they'd survive the [n] strip as literal text.
+  # The whitespace before the range goes with it — same rule as the
+  # [n] strip in paragraph_sources ("word [1–5]." renders "word.").
   # Mirrors sansRangeMarkers in stream_reader_controller.js.
   def sans_marker_ranges(text)
-    text.gsub(/\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\[\d+\s*[–—-]\s*\d+\]/, '')
+    text.gsub(/\s*\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\s*\[\d+\s*[–—-]\s*\d+\]/, '')
   end
 
   # Splits the model's trailing "Sources:" footer off the answer and

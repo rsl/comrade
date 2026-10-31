@@ -530,7 +530,11 @@ export default class extends Controller {
   }
 
   visibleText(text) {
-    return text.replace(/\[\d+\]/g, "").replace(/\[\d*\]$/, "")
+    // Horizontal whitespace only before a marker: this runs on the whole
+    // raw stream, and \s* would eat the \n\n between paragraphs, visually
+    // merging them in the preview. The completion twins run per-paragraph,
+    // where plain \s* is safe.
+    return text.replace(/[^\S\n]*\[\d+\]/g, "").replace(/[^\S\n]*\[\d*\]$/, "")
   }
 
   // End-of-stream formatting: paragraphs split on blank lines, each
@@ -585,7 +589,7 @@ export default class extends Controller {
     let resolved = false
     const html = body.split(/\n\n+/).map((paragraph) => {
       const urls = []
-      const plain = this.sansSup(this.sansRangeMarkers(paragraph)).replace(/\[(\d+)\]/g, (marker, n) => {
+      const plain = this.sansSup(this.sansRangeMarkers(paragraph)).replace(/\s*\[(\d+)\]/g, (marker, n) => {
         const cited = markerSources[parseInt(n)]
         if (!cited) return marker
         resolved = true
@@ -627,7 +631,7 @@ export default class extends Controller {
   // single source, so they'd survive the [n] pass as literal text — the
   // leak this strips. Misbehaving models can't bracket-bomb the page.
   sansRangeMarkers(text) {
-    return text.replace(/\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\[\d+\s*[–—-]\s*\d+\]/g, "")
+    return text.replace(/\s*\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\s*\[\d+\s*[–—-]\s*\d+\]/g, "")
   }
 
   sourceChips(sources, escape) {
