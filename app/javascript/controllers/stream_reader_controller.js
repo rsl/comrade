@@ -164,7 +164,6 @@ export default class extends Controller {
     this.partial = ""
     this.pendingCitations = null
     this.pendingStats = null
-    this.pendingStatsId = null
     this.footerSeen = false
     this.clearOffers()
     const request = this.currentRequest = new AbortController()
@@ -346,7 +345,7 @@ export default class extends Controller {
     this.turnLog.push(text)
     if (!this.logEl) {
       this.logEl = document.createElement("pre")
-      this.logEl.className = "turn-log hidden mb-2 whitespace-pre-wrap border-l-2 border-soviet/40 pl-2 text-xs leading-relaxed text-neutral-500"
+      this.logEl.className = "turn-log hidden mt-2 whitespace-pre-wrap border-l-2 border-soviet/40 pl-2 text-xs leading-relaxed text-neutral-500"
       this.statusEl.after(this.logEl)
     }
     this.logEl.textContent = this.turnLog.join("\n")
@@ -359,20 +358,13 @@ export default class extends Controller {
     event.currentTarget.closest("article")?.querySelector(".turn-log")?.classList.toggle("hidden")
   }
 
-  // Completion keeps the status line: the dot stops pulsing, the clock
-  // freezes to the server's own total, and the live log swaps for the
-  // persisted one — what a reload renders. Pure function of the stats
-  // event, so the live render and the reload match byte for byte.
+  // Completion retires the ticking status: renderCitations swaps the whole
+  // block for the merged action line — dot, clickable total, persisted
+  // log. Stopping the timer is all that's left here; failure and steering
+  // tear the line down through stopTurnStatus.
   completeTurnStatus() {
     if (this.turnTimer) clearInterval(this.turnTimer)
     this.turnTimer = null
-    const stats = this.pendingStats
-    if (!stats || !this.statusEl) return
-    this.statusEl.querySelector(".live-dot")?.classList.remove("animate-pulse")
-    this.statusClock.textContent =
-      [stats.lane && `${stats.lane} lane`, this.turnClock(stats.total_ms)].filter(Boolean).join(" · ")
-    const log = this.statusEl.closest("article")?.querySelector(".turn-log")
-    if (log && stats.log) log.textContent = stats.log.join("\n")
   }
 
   stopTurnStatus() {
@@ -514,7 +506,6 @@ export default class extends Controller {
       // match byte for byte. The row id rides the event (wire-only, the
       // jsonb stays clean) so the footer's prompt link can target the row.
       this.pendingStats = event.stats
-      this.pendingStatsId = event.id
     }
     return false
   }
@@ -608,11 +599,20 @@ export default class extends Controller {
     }).join("")
     if (footerSources.length && !resolved) html += this.sourceChips(footerSources, escape)
     content.innerHTML = html
+    // Completion merges the foreman into the action line: the status
+    // line and its live log retire, the merged line carries the dot and
+    // the clickable total, and the persisted log sits under it — what a
+    // reload renders. Byte-identical with _message.html.erb.
+    this.statusEl?.remove()
+    this.logEl?.remove()
+    this.statusEl = null
+    this.logEl = null
     if (!citations.length) {
       answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
     } else {
       answer.insertAdjacentHTML("beforeend", this.breakDownHtml)
     }
+    this.appendTurnLogPre(answer)
     this.pendingCitations = null
     this.pendingStats = null
   }
@@ -649,36 +649,43 @@ export default class extends Controller {
 
   // The provenance segment of the answer's footer line, from the server's
   // stats event — the same numbers the row persists, so the live render
-  // and the reload match byte for byte. Byte-identical with
-  // stats_segment in conversations_helper.rb.
+  // and the reload match byte for byte. On a fresh completion the total
+  // is the click target that toggles the foreman's log. Byte-identical
+  // with stats_segment in conversations_helper.rb.
   statsSegment() {
     const stats = this.pendingStats
-    if (!stats) return ""
-    const parts = []
-    if (stats.lane) parts.push(`${stats.lane} lane`)
-    if (stats.model) parts.push(stats.model)
-    if (stats.effort) parts.push(`effort ${stats.effort}`)
-    if (stats.first_token_ms) parts.push(`first token ${this.statSeconds(stats.first_token_ms)}`)
-    if (stats.total_ms) parts.push(`total ${this.statSeconds(stats.total_ms)}`)
-    return parts.length ? ` · ${parts.join(" · ")}` : ""
+    if (!stats || !stats.total_ms) return ""
+    return ` · <span class="cursor-pointer hover:text-neutral-300" data-action="click->stream-reader#toggleTurnLog">total ${this.statSeconds(stats.total_ms)}</span>`
   }
 
   statSeconds(ms) {
     return `${(ms / 1000).toFixed(1)}s`
   }
 
-  // The prompt-inspector link riding the stats segment — byte-twin of
-  // prompt_link in conversations_helper.rb; the row id arrives on the
-  // stats event.
-  promptLink() {
-    if (!this.pendingStatsId) return ""
-    return ` · <a href="${this.conversationUrl}/messages/${this.pendingStatsId}/prompt" class="prompt-link cursor-pointer underline hover:text-neutral-300">prompt</a>`
+  // The foreman's dot, stood — the merged action line's marker that this
+  // turn carries a log. Byte-twin of standing_dot in
+  // conversations_helper.rb.
+  get standingDot() {
+    return '<span class="live-dot mr-2 inline-block h-1.5 w-1.5 rounded-full bg-soviet"></span>'
+  }
+
+  // The foreman's timestamped log, collapsed under the merged action line
+  // and opened from the total time. The persisted log is the truth; text
+  // only — model names, queries and URLs never touch innerHTML. Byte-twin
+  // of turn_log_pre in conversations_helper.rb.
+  appendTurnLogPre(answer) {
+    const stats = this.pendingStats
+    if (!stats?.log) return
+    const pre = document.createElement("pre")
+    pre.className = "turn-log hidden mt-2 whitespace-pre-wrap border-l-2 border-soviet/40 pl-2 text-xs leading-relaxed text-neutral-500"
+    pre.textContent = stats.log.join("\n")
+    answer.insertAdjacentElement("beforeend", pre)
   }
 
   get ownKnowledgeHtml() {
     // Must stay byte-identical with _message.html.erb's double_check footer:
     // the post-first-reply Turbo.visit swaps one for the other.
-    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">From model knowledge' + this.statsSegment() + this.promptLink() + '<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
+    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.standingDot + 'From model knowledge' + this.statsSegment() + '<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }
@@ -687,7 +694,7 @@ export default class extends Controller {
   // line carries the action. Byte-identical with _message.html.erb's
   // break_down branch.
   get breakDownHtml() {
-    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.statsSegment() + this.promptLink() + '<a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
+    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.standingDot + this.statsSegment() + '<a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }

@@ -7,63 +7,56 @@ module ConversationsHelper
     render 'chat', endpoint:, fresh:, conversation:, messages:
   end
 
-  # The provenance segment of the answer's footer line: which lane wrote
-  # it, the model on it, and the turn's timings — from the row's stats
-  # jsonb. Empty when the row carries none (steered partials, older
-  # answers). Byte-identical with the stream reader's statsSegment; the
-  # post-first-reply Turbo.visit swaps one for the other.
-  def stats_segment(message)
+  # The provenance segment of the answer's footer line: the turn's total
+  # time — from the row's stats jsonb. On the latest stats answer it is
+  # the click target that toggles the foreman's log; on older answers
+  # plain text. Empty when the row carries no stats (steered partials,
+  # older answers without). Byte-identical with the stream reader's
+  # statsSegment; the post-first-reply Turbo.visit swaps one for the other.
+  def stats_segment(message, clickable: false)
     stats = message.stats
-    return '' if stats.blank?
+    return '' if stats.blank? || stats['total_ms'].blank?
 
-    segments = { lane: "#{ stats['lane'] } lane",
-                 model: stats['model'],
-                 effort: "effort #{ stats['effort'] }",
-                 first_token_ms: "first token #{ stat_seconds(stats['first_token_ms']) }",
-                 total_ms: "total #{ stat_seconds(stats['total_ms']) }", }
-    rendered = segments.filter_map { |key, text| text if stats[key.to_s] }
-    rendered.empty? ? '' : " · #{ rendered.join(' · ') }"
+    total = "total #{ stat_seconds(stats['total_ms']) }"
+    inner =
+      if clickable
+        tag.span(
+          total,
+          class: 'cursor-pointer hover:text-neutral-300',
+          data: { action: 'click->stream-reader#toggleTurnLog' },
+        )
+      else
+        total
+      end
+    safe_join([' · ', inner])
   end
 
   def stat_seconds(milliseconds)
     "#{ (milliseconds.to_f / 1000).round(1) }s"
   end
 
-  # The prompt-inspector link riding the stats segment: every answer
-  # carrying stats gets one. Byte-twin of the stream reader's promptLink —
-  # the row id arrives on the stats event there.
-  def prompt_link(message)
-    return '' if message.stats.blank?
-
-    path = prompt_conversation_message_path(message.conversation_id, message)
-    # safe_join, not string interpolation: interpolation strips link_to's
-    # safety flag and ERB would escape the anchor into visible text.
-    safe_join([' · ', link_to('prompt', path, class: 'prompt-link cursor-pointer underline hover:text-neutral-300')])
-  end
-
   # The id of the conversation's most recent answer carrying stats — the
-  # only turn whose foreman's status line has a target. Steered partials
-  # persist stats-less, so the line lands on the last completed answer.
+  # only turn whose foreman's log rides the action line. Steered partials
+  # persist stats-less, so it lands on the last completed answer.
   def turn_status_id(messages)
     messages.reverse.detect { |turn| turn.role == 'assistant' && turn.stats.present? }&.id
   end
 
-  # The foreman's status line and its log, on the latest answer carrying
-  # stats — the reload twin of the render the stream reader leaves behind
-  # at completion: a quiet line (lane, the turn's total) that clicks open
-  # the timestamped log the server accumulated during the turn.
-  # Byte-identical with the stream reader's completeTurnStatus.
-  def turn_status(message)
-    stats = message.stats
-    dot = tag.span(class: 'live-dot inline-block h-1.5 w-1.5 rounded-full bg-soviet')
-    text = tag.span(turn_status_text(stats), class: 'turn-status-text grow')
-    line = tag.p(dot + text,
-      class: 'turn-status flex cursor-pointer items-center gap-2 text-xs text-neutral-500',
-      data: { action: 'click->stream-reader#toggleTurnLog' },)
-    log = tag.pre(stats['log'].join("\n"),
-      class: 'turn-log hidden mb-2 whitespace-pre-wrap border-l-2 border-soviet/40 ' \
+  # The foreman's dot, stood: the merged action line's marker that this
+  # turn carries a log. Byte-twin of the stream reader's completion markup.
+  def standing_dot
+    tag.span(class: 'live-dot mr-2 inline-block h-1.5 w-1.5 rounded-full bg-soviet')
+  end
+
+  # The foreman's timestamped log, collapsed under the merged action line
+  # and opened from the total time. Empty when the turn kept no log.
+  # Byte-twin of the stream reader's appendTurnLogPre.
+  def turn_log_pre(message)
+    return '' if message.stats['log'].blank?
+
+    tag.pre(message.stats['log'].join("\n"),
+      class: 'turn-log hidden mt-2 whitespace-pre-wrap border-l-2 border-soviet/40 ' \
              'pl-2 text-xs leading-relaxed text-neutral-500',)
-    line + log
   end
 
   # The archive row's label: the conversation's whole first line — the
@@ -73,14 +66,6 @@ module ConversationsHelper
     content = conversation.messages.where(role: 'user').order(:id).pick(:content)
     line = content.to_s.lines.map(&:strip).detect(&:present?)
     line.presence || conversation.title.presence || '(Untitled)'
-  end
-
-  def turn_status_text(stats)
-    [stats['lane'] && "#{ stats['lane'] } lane", turn_clock(stats['total_ms'])].compact.join(' · ')
-  end
-
-  def turn_clock(milliseconds)
-    format('%<m>d:%<ss>02d', m: milliseconds.to_i / 60_000, ss: milliseconds.to_i / 1000 % 60)
   end
 
   def message_turn(message, tool_notes:, double_check:, break_down:, turn_log: false)
