@@ -142,10 +142,40 @@ module ConversationsHelper
 
   # The quiet chip text for a tool row: what comrade did, in prose.
   def tool_note(tool)
-    if tool.tool_name == 'web_search'
-      "searched for #{ tool.tool_payload['arguments']['query'] }"
-    else
-      "fetched #{ tool.tool_payload['arguments']['url'] }"
+    case tool.tool_name
+    when 'web_search' then "searched for #{ tool.tool_payload['arguments']['query'] }"
+    when 'image_search' then "searched images for #{ tool.tool_payload['arguments']['query'] }"
+    else "fetched #{ tool.tool_payload['arguments']['url'] }"
     end
+  end
+
+  # The thumbnail strip an image_search row found: proxied thumbs
+  # (comrade serves the bytes), tap opens the full image in the
+  # lightbox. Sits under the turn's chips, ahead of the answer. The raw
+  # source urls live on the row's payload; the proxy derives both
+  # addresses.
+  def image_strip(tool)
+    buttons = tool.tool_payload['images'].to_a.map { |image| strip_button(image) }
+    # rubocop:disable-next Rails/OutputSafety — strip_button escapes every
+    # interpolated piece; the wrapper literals are static.
+    %Q(<div class="image-strip mt-1 mb-3 flex gap-2 overflow-x-auto">#{ buttons.join }</div>).html_safe
+  end
+
+  # One thumbnail button, built as raw markup so the render stays
+  # byte-identical with the stream reader's imageStripHtml — the
+  # post-first-reply Turbo.visit swaps one for the other. Attributes are
+  # hand-escaped: titles are model-adjacent text, never trusted.
+  # data-thumb-url rides for the lightbox's fallback: when the full-size
+  # source can't be served, the known-good thumbnail shows instead.
+  def strip_button(image)
+    title = html_escape(image['title'].to_s)
+    full = html_escape(Comrade::ImageProxy.url_for(image['src']))
+    thumb = html_escape(Comrade::ImageProxy.url_for(image['thumbnail']))
+    [
+      '<button type="button" class="shrink-0 cursor-pointer" data-action="click->lightbox#open" ',
+      %Q(data-full-url="#{ full }" data-thumb-url="#{ thumb }" data-caption="#{ title }">),
+      %Q(<img src="#{ thumb }" alt="#{ title }" loading="lazy" class="h-24 w-auto rounded">),
+      '</button>',
+    ].join
   end
 end

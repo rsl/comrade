@@ -29,14 +29,18 @@ module StreamsReply
     count_calibration_signal
     set_stream_headers
     content = params.require(:content)
+    # The reader's search-mode switch: only a known mode survives —
+    # anything else is the default turn.
+    mode = params[:mode].to_s.in?(%w[images]) ? 'images' : nil
     # :reek:ControlParameter — the request picks the entry point; that is
     # the controller's job.
     reply = if ActiveModel::Type::Boolean.new.cast(params[:retry])
-      retry_reply(conversation, content)
+      retry_reply(conversation, content, mode)
     else
       Comrade::Reply.call(conversation: conversation,
         content: content,
-        interrupted: params[:interrupted],)
+        interrupted: params[:interrupted],
+        mode: mode,)
     end
     self.response_body = reply_enumerator(reply)
   end
@@ -54,18 +58,20 @@ module StreamsReply
   #     and a fresh page visits the true transcript;
   #   - stored, unanswered (only tool rows behind it): the genuine retry —
   #     call_retry, user persistence skipped.
-  def retry_reply(conversation, content)
+  def retry_reply(conversation, content, mode)
     case retry_case(conversation, content)
     when :missing
       Comrade::Reply.call(conversation: conversation,
         content: content,
-        interrupted: params[:interrupted],)
+        interrupted: params[:interrupted],
+        mode: mode,)
     when :answered
       duplicate_stream
     else
       Comrade::Reply.call_retry(conversation: conversation,
         content: content,
-        interrupted: params[:interrupted],)
+        interrupted: params[:interrupted],
+        mode: mode,)
     end
   end
 

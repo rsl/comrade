@@ -18,8 +18,17 @@ class MessagesController < ApplicationController
     message = @conversation.messages.find(params[:id])
     raise ActiveRecord::RecordNotFound unless message.role == 'assistant'
 
+    @request = rebuilt_wire_request(message)
+  end
+
+  private
+
+  # The inspector rebuilds the request the turn rode: the lane recorded
+  # in the row's stats (model, effort, search mode) over the transcript
+  # up to the answer row, the config pieces read as they are now.
+  def rebuilt_wire_request(message)
     stats = message.stats || {}
     reply = Comrade::Reply.new(conversation: @conversation, content: '')
-    @request = reply.rebuilt_request(upto: message, model: stats['model'], effort: stats['effort'])
+    reply.rebuilt_request(upto: message, model: stats['model'], effort: stats['effort'], mode: stats['mode'])
   end
 end

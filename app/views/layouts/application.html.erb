@@ -31,7 +31,7 @@
     surface gets only the enlist card until it chooses — "stay in the
     commune" reveals the sidebar client-side along with the composer. %>
   <% gated = current_enlistee.blank? && request.path.in?([root_path, conversations_path]) %>
-  <body class="bg-ground text-neutral-200 antialiased overflow-hidden" data-controller="sidebar-drawer">
+  <body class="bg-ground text-neutral-200 antialiased overflow-hidden" data-controller="sidebar-drawer lightbox" data-action="keydown->lightbox#keydown">
     <%# Narrow viewports: the ☰ summons the sidebar as an overlay drawer;
         a tap outside or on a conversation dismisses it. The ☰ hides
         while the drawer is open — scrim tap and swipe are the exits.

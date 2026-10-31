@@ -20,7 +20,15 @@ commit.
   model's answer, handles tool calls mid-stream (pause, execute, append the
   tool result, resume).
 - **`Comrade::Tools::WebSearch`** — searches via SearXNG.
+- **`Comrade::Tools::ImageSearch`** — image search via SearXNG
+  (`categories=images`); shares the `Comrade::Tools::Pacing` floor with
+  WebSearch (one SearXNG, one throttle).
 - **`Comrade::Tools::FetchPage`** — fetches a page's full text via Tavily.
+- **`Comrade::ImageProxy`** — comrade fetches and serves the images
+  itself: a proxied URL is the source URL plus a truncated HMAC
+  signature (`/img/<key>?p=<url>`), so devices never talk to image
+  hosts and nothing unsigned gets proxied. Fetched copies cache under
+  `storage/images/` (no cleanup rule yet).
 - Tools are plain Ruby objects with `name`, `schema`, and `call(args)`. No
   base class, no registry magic.
 

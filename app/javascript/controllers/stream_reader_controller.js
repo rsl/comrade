@@ -12,7 +12,7 @@ import { marked } from "marked"
 // names it, later exchanges post to its messages endpoint, and the first
 // completed stream visits the conversation's permanent address.
 export default class extends Controller {
-  static targets = ["form", "transcript", "title", "gate", "greeting"]
+  static targets = ["form", "transcript", "title", "gate", "greeting", "webMode", "imageMode"]
   static values = { endpoint: String, fresh: Boolean, keepSimple: Boolean }
 
   // The in-flight request, abortable, and the partial answer text it has
@@ -51,6 +51,10 @@ export default class extends Controller {
   // from `partial`, so nothing is missed, and prose that merely starts
   // "Sources:" self-corrects there (the footer regex won't match it).
   footerSeen = false
+  // The answer-mode switch: which mode this ask rides. Per-turn — it
+  // reverts to all on send, like the composer clearing; a retry replays
+  // the failed turn's mode.
+  imageMode = false
 
   connect() {
     // The transcript panel is the scroll surface (app shell: the document
@@ -130,6 +134,31 @@ export default class extends Controller {
     input.setSelectionRange(input.value.length, input.value.length)
   }
 
+  // The answer-mode switch: all is the default; images swaps web search
+  // off the wire for the turn. The active segment reads as part of the
+  // composer (raised), the inactive one recedes.
+  pickWebMode() {
+    this.imageMode = false
+    this.renderModeSwitch()
+  }
+
+  pickImageMode() {
+    this.imageMode = true
+    this.renderModeSwitch()
+  }
+
+  // The active segment is heavier, the inactive one recedes — the bar
+  // behind both stays unified. Class twins of _chat.html.erb's switch.
+  renderModeSwitch() {
+    if (!this.hasWebModeTarget) return
+    this.webModeTarget.className = this.imageMode
+      ? "px-3 text-sm leading-snug text-neutral-500"
+      : "px-3 text-sm leading-snug font-medium text-neutral-900"
+    this.imageModeTarget.className = this.imageMode
+      ? "px-3 text-sm leading-snug font-medium text-neutral-900"
+      : "px-3 text-sm leading-snug text-neutral-500"
+  }
+
   async submit(event) {
     event.preventDefault()
     const input = event.target.elements.content
@@ -139,6 +168,10 @@ export default class extends Controller {
     input.value = ""
     this.syncAskButton()
     this.clearRetries()
+    // The mode rides the ask and reverts — per-turn, like the composer
+    // clearing.
+    const mode = this.imageMode ? "images" : ""
+    this.pickWebMode()
     // Only an in-flight stream can be interrupted. A completed stream also
     // leaves `partial` holding its full text — sending that as `interrupted`
     // makes the server persist the previous answer again as a lead-in row
@@ -155,12 +188,13 @@ export default class extends Controller {
     }
 
     const answer = this.appendExchange(content)
-    await this.stream(content, interrupted, answer, { retry: false })
+    await this.stream(content, interrupted, answer, { retry: false, mode })
   }
 
   // The one reply path: POST, stream into the given assistant turn, and
-  // on any failure leave a retry link bound to the same content.
-  async stream(content, interrupted, answer, { retry }) {
+  // on any failure leave a retry link bound to the same content — same
+  // mode: a failed image turn retries as an image turn.
+  async stream(content, interrupted, answer, { retry, mode }) {
     this.partial = ""
     this.pendingCitations = null
     this.pendingStats = null
@@ -176,17 +210,17 @@ export default class extends Controller {
       response = await fetch(this.endpointValue, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ content, interrupted, retry }),
+        body: JSON.stringify({ content, interrupted, retry, mode }),
         signal: this.currentRequest.signal,
       })
     } catch (error) {
       if (error.name === "AbortError") return
-      this.showRetry(content, interrupted, answer)
+      this.showRetry(content, interrupted, answer, null, mode)
       return
     }
 
     if (!response.ok) {
-      this.showRetry(content, interrupted, answer)
+      this.showRetry(content, interrupted, answer, null, mode)
       return
     }
 
@@ -204,7 +238,7 @@ export default class extends Controller {
     } catch (error) {
       // A steered-away stream dies intentionally; its partial answer
       // stays on the page and in the transcript via the next request.
-      if (error.name !== "AbortError") this.showRetry(content, interrupted, answer)
+      if (error.name !== "AbortError") this.showRetry(content, interrupted, answer, null, mode)
       return
     } finally {
       if (this.currentRequest === request) this.currentRequest = null
@@ -226,8 +260,8 @@ export default class extends Controller {
   // the retry request skips user persistence and carries whatever partial
   // answer had streamed as interruption context. The reason, when the
   // server sent one, names the upstream failure.
-  showRetry(content, interrupted, answer, reason) {
-    this.failed = { content, interrupted }
+  showRetry(content, interrupted, answer, reason, mode) {
+    this.failed = { content, interrupted, mode }
 
     const line = document.createElement("p")
     line.className = "retry-line mt-2 text-xs text-red-400"
@@ -251,7 +285,7 @@ export default class extends Controller {
 
   async retry() {
     this.clearRetries()
-    const { content, interrupted } = this.failed
+    const { content, interrupted, mode } = this.failed
 
     // The retried answer arrives as a fresh assistant turn below the
     // failed one; the user turn is already on the page and in the DB.
@@ -260,7 +294,7 @@ export default class extends Controller {
     const answer = turns[turns.length - 1]
     this.contentEl = answer.querySelector("div")
 
-    await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null })
+    await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null, mode })
   }
 
   appendExchange(content) {
@@ -436,7 +470,7 @@ export default class extends Controller {
         // reason lands in the retry line; the [DONE] success path never
         // runs, so no citation render and no Turbo visit.
         if (parsed.type === "error") {
-          this.showRetry(content, interrupted, answer, parsed.message)
+          this.showRetry(content, interrupted, answer, parsed.message, mode)
           return false
         }
         // The server recognized this retry as an already-answered turn:
@@ -480,8 +514,8 @@ export default class extends Controller {
       // alone. The status line keeps ticking: the stream is still working.
       this.partial = ""
       this.footerSeen = false
-      this.turnPhase = event.name === "web_search" ? "searching" : "fetching"
-      this.appendTurnLog(this.turnStamp(event.name === "web_search" ? `searched: ${event.query}` : `fetched: ${event.url}`))
+      this.turnPhase = event.name === "fetch_page" ? "fetching" : "searching"
+      this.appendTurnLog(this.turnStamp(this.toolLogLine(event)))
       this.renderTurnStatus()
       // Chips collect into one group div (matching the server render):
       // the group carries the outer spacing, chips are tight inside it.
@@ -497,6 +531,11 @@ export default class extends Controller {
       this.contentEl = document.createElement("div")
       this.contentEl.className = "whitespace-pre-wrap leading-relaxed"
       group.after(this.contentEl)
+    } else if (event.type === "images") {
+      // An image_search round's found pictures: a thumbnail strip after
+      // the chip group, ahead of the answer text (the reload twin reads
+      // the row's payload).
+      this.renderImageStrip(answer, event.images)
     } else if (event.type === "citations") {
       this.pendingCitations = event.citations
       return event.citations.length > 0
@@ -644,11 +683,48 @@ export default class extends Controller {
     return `<div class="mt-1 mb-4 text-xs text-neutral-500">sources: ${links.join(" · ")}</div>`
   }
 
+  // The foreman's log line for a tool event — the same words the server
+  // writes into the persisted log (tool_log_line in reply.rb).
+  toolLogLine(event) {
+    if (event.name === "web_search") return `searched: ${event.query}`
+    if (event.name === "image_search") return `searched images: ${event.query}`
+    return `fetched: ${event.url}`
+  }
+
   toolChip(event) {
-    const label = event.query ? `searched for ${event.query}` : `fetched ${event.url}`
+    const label =
+      event.name === "image_search" ? `searched images for ${event.query}`
+      : event.query ? `searched for ${event.query}`
+      : `fetched ${event.url}`
     // Chip inside the group (see applyEvent): tight, the group div carries
     // the spacing.
     return `<p class="mb-1 text-xs text-neutral-500">— ${label}</p>`
+  }
+
+  // The thumbnail strip an image_search round found: proxied thumbs
+  // (comrade serves the bytes — devices never hit image hosts), tap
+  // opens the full image in the lightbox. Sits after the chip group,
+  // ahead of the answer text; further strips keep row order under it.
+  // Byte-identical with image_strip in conversations_helper.rb.
+  renderImageStrip(answer, images) {
+    const group = answer.querySelector(".chip-group")
+    if (!group || !images?.length) return
+    const strips = answer.querySelectorAll(".image-strip")
+    const anchor = strips.length ? strips[strips.length - 1] : group
+    const strip = document.createElement("template")
+    strip.innerHTML = this.imageStripHtml(images).trim()
+    anchor.after(strip.content.firstChild)
+    this.scrollToBottom()
+  }
+
+  imageStripHtml(images) {
+    const escape = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
+    const buttons = images.map((image) => {
+      const title = escape(image.title)
+      return `<button type="button" class="shrink-0 cursor-pointer" data-action="click->lightbox#open" data-full-url="${escape(image.full)}" data-thumb-url="${escape(image.thumb)}" data-caption="${title}"><img src="${escape(image.thumb)}" alt="${title}" loading="lazy" class="h-24 w-auto rounded"></button>`
+    }).join("")
+    return `<div class="image-strip mt-1 mb-3 flex gap-2 overflow-x-auto">${buttons}</div>`
   }
 
   // The provenance segment of the answer's footer line, from the server's

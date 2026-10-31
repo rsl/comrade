@@ -20,6 +20,12 @@
           <p class="mb-1 text-xs text-neutral-500">— <%= tool_note(note) %></p>
         <% end %>
       </div>
+      <%# Image-search rows grow a thumbnail strip under the chips — the
+          stream render builds it from the images event, this one from the
+          row's payload. Byte-identical twins. %>
+      <% tool_notes.select { |tool| tool.tool_payload['images'].present? }.each do |tool| %>
+        <%= image_strip(tool) %>
+      <% end %>
     <% end %>
     <% if message.role == 'assistant' %>
       <div class="leading-relaxed"><%= cited_paragraphs(message) %></div>

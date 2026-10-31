@@ -5,7 +5,8 @@ module Comrade
   # from any OpenAI-compatible chat-completions endpoint, and persists the
   # assistant message on clean completion. Yields structured events —
   # {type: 'start'} lane/model, {type: 'delta'} text, {type: 'tool'}
-  # activity, {type: 'error'} upstream failure — the caller owns transport.
+  # activity, {type: 'images'} found pictures, {type: 'error'} upstream
+  # failure — the caller owns transport.
   # When the model emits tool_calls, the
   # loop pauses streaming,
   # executes the tools, persists the exchange, and resumes with the results
@@ -31,6 +32,13 @@ module Comrade
     FINAL_ANSWER_DIRECTIVE = 'You have no tools for this reply. Write your final answer NOW, in words, ' \
                              'from what the earlier searches gathered. Never write tool calls as text.'
 
+    # Image mode: the reader flipped the composer's switch — the turn
+    # rides pictures. Web search is off the table (IMAGE_DEFINITIONS);
+    # this appended system line is the instruction.
+    IMAGE_MODE_DIRECTIVE = 'The reader is asking for pictures. Search images for this reply and let ' \
+                           'the pictures carry it — answer briefly around them, in words. Image ' \
+                           'results are not sources: no [n] markers, no Sources: footer.'
+
     # Tool definitions in OpenAI's schema — the model names these in
     # tool_calls; the registry below maps names to implementations.
     DEFINITIONS = [
@@ -49,6 +57,19 @@ module Comrade
       {
         type: 'function',
         function: {
+          name: 'image_search',
+          description: 'Search the web for images. Use when pictures would help ' \
+                       'the answer — photos, diagrams, artwork, maps.',
+          parameters: {
+            type: 'object',
+            properties: { query: { type: 'string', description: 'The image search query' } },
+            required: ['query'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
           name: 'fetch_page',
           description: 'Fetch a URL and return its full text content.',
           parameters: {
@@ -60,8 +81,12 @@ module Comrade
       },
     ].freeze
 
-    def self.call(conversation:, content:, interrupted: nil)
-      reply = new(conversation: conversation, content: content)
+    # Image mode's tool set: the image tool and page fetch stay, web
+    # search goes — the switch means what it says.
+    IMAGE_DEFINITIONS = DEFINITIONS.reject { |definition| definition.dig(:function, :name) == 'web_search' }.freeze
+
+    def self.call(conversation:, content:, interrupted: nil, mode: nil)
+      reply = new(conversation: conversation, content: content, mode: mode)
       persist_lead_in(reply, conversation, interrupted)
       reply.append_message(role: 'user', content: content)
       reply.enumerator
@@ -69,8 +94,8 @@ module Comrade
 
     # A retried reply: the user message persisted with the failed attempt,
     # so only the lead-in (steered partial, resurrection) applies.
-    def self.call_retry(conversation:, content:, interrupted: nil)
-      reply = new(conversation: conversation, content: content)
+    def self.call_retry(conversation:, content:, interrupted: nil, mode: nil)
+      reply = new(conversation: conversation, content: content, mode: mode)
       persist_lead_in(reply, conversation, interrupted)
       reply.enumerator
     end
@@ -83,9 +108,10 @@ module Comrade
       conversation.resurrect if conversation.archived?
     end
 
-    def initialize(conversation:, content:)
+    def initialize(conversation:, content:, mode: nil)
       @conversation = conversation
       @content = content
+      @mode = mode
       # The stream sink is attached when the enumerator starts.
       @yielder = nil
     end
@@ -128,8 +154,20 @@ module Comrade
     # model/effort the row's stats recorded. A reconstruction, not a
     # snapshot — the transcript part is exact, the two config pieces read
     # as they are now.
-    def rebuilt_request(upto:, model:, effort:)
-      wire_request(model: model, effort: effort, transcript: @conversation.to_transcript(before: upto))
+    def rebuilt_request(upto:, model:, effort:, mode: nil)
+      lines = []
+      lines << IMAGE_MODE_DIRECTIVE if mode == 'images'
+      wire_request(model: model,
+        effort: effort,
+        transcript: @conversation.to_transcript(before: upto),
+        system_lines: lines,
+        tools: turn_tools_for(mode),)
+    end
+
+    # The tools a reconstructed turn rode: image mode's set when its
+    # stats say so, the full set otherwise.
+    def turn_tools_for(mode)
+      mode == 'images' ? IMAGE_DEFINITIONS : DEFINITIONS
     end
 
     private
@@ -178,18 +216,18 @@ module Comrade
 
     def run_tool_call(tool_call, offset)
       arguments = JSON.parse(tool_call[:arguments])
-      result, found = execute_tool(tool_call[:name], arguments, offset)
+      result, found, extra = execute_tool(tool_call[:name], arguments, offset)
       append_message(role: 'tool',
         content: result,
         tool_name: tool_call[:name],
-        tool_payload: { arguments: arguments, tool_call_id: tool_call[:id] },)
+        tool_payload: { arguments: arguments, tool_call_id: tool_call[:id] }.merge(extra),)
       found
     end
 
     # One streaming request/response pass. Text deltas flow out as events;
     # tool_call fragments accumulate until the stream ends, so the whole
     # frame lands complete. Returns { content:, tool_calls: } (indexed).
-    def stream_pass(tool_definitions: DEFINITIONS, final_instruction: nil)
+    def stream_pass(tool_definitions: turn_tools, final_instruction: nil)
       content = +''
       tool_calls = Hash.new { |hash, index| hash[index] = { id: nil, name: +'', arguments: +'' } }
       each_frame(payload(tool_definitions: tool_definitions, final_instruction: final_instruction)) do |delta|
@@ -248,29 +286,34 @@ module Comrade
         function: { name: call[:name], arguments: call[:arguments] }, }
     end
 
+    # The dispatch contract: [result text, citations, extra payload] — the
+    # extra slot carries jsonb for the tool row (image search's found
+    # pictures); most tools send {}.
     def execute_tool(name, arguments, offset)
       log_turn(tool_log_line(name, arguments))
       yielder << { type: 'tool', name: name }.merge(arguments)
       dispatch_tool(name, arguments, offset)
     rescue JSON::ParserError
-      ['Invalid tool arguments', []]
+      ['Invalid tool arguments', [], {}]
     end
 
     # The foreman's log line for a tool round — the same words the client
-    # writes when the tool event arrives ("searched: x" / "fetched: y").
+    # writes when the tool event arrives ("searched: x" / "searched
+    # images: x" / "fetched: y").
     def tool_log_line(name, arguments)
-      if name == 'web_search'
-        "searched: #{ arguments['query'] }"
-      else
-        "fetched: #{ arguments['url'] }"
+      case name
+      when 'web_search' then "searched: #{ arguments['query'] }"
+      when 'image_search' then "searched images: #{ arguments['query'] }"
+      else "fetched: #{ arguments['url'] }"
       end
     end
 
     def dispatch_tool(name, arguments, offset)
       case name
       when 'web_search' then search_results(arguments['query'], offset)
+      when 'image_search' then image_results(arguments['query'])
       when 'fetch_page' then fetch_content(arguments['url'], offset)
-      else ["Unknown tool: #{ name }", []]
+      else ["Unknown tool: #{ name }", [], {}]
       end
     end
 
@@ -280,13 +323,38 @@ module Comrade
     # canonical citations list the renderer resolves against.
     def search_results(query, offset)
       results = Tools::WebSearch.call(query: query)
-      return ['(no results)', []] unless results.is_a?(Array)
+      return ['(no results)', [], {}] unless results.is_a?(Array)
 
       shown = results.each_with_index.map do |result, index|
         "[#{ offset + index + 1 }] #{ result['title'] } — #{ result['url'] }\n#{ result['content'] }"
       end
       [shown.join("\n\n"),
-       results.map { |result| { title: result['title'], url: result['url'] } },]
+       results.map { |result| { title: result['title'], url: result['url'] } },
+       {},]
+    end
+
+    # Image results never join the citation numbering — the chip and the
+    # thumbnail strip are their provenance, and [n] markers stay the text
+    # sources' system (results are numbered as a plain list). The strip
+    # rides the wire as its own event (proxied urls for the live render)
+    # and persists raw on the tool row's payload, where the reload twin
+    # rebuilds it through the same proxy.
+    def image_results(query)
+      found = Tools::ImageSearch.call(query: query)
+      return [found, [], {}] unless found.is_a?(Array)
+      return ['(no images found)', [], {}] if found.empty?
+
+      yielder << { type: 'images', images: found.map { |image| ImageProxy.view(image) } }
+      [image_list(found), [], images: found]
+    end
+
+    # The model's view of what it found: titles and page urls, numbered
+    # as a plain list — [n] stays the text sources' citation system.
+    def image_list(found)
+      lines = found.each_with_index.map do |image, index|
+        "#{ index + 1 }. #{ image[:title] } — #{ image[:page] }"
+      end
+      lines.join("\n")
     end
 
     def fetch_content(url, offset)
@@ -296,7 +364,7 @@ module Comrade
         return ["#{ failed } work from the search results or answer from what you have.", []]
       end
 
-      ["[#{ offset + 1 }] #{ url }\n\n#{ content }", [title: url, url: url]]
+      ["[#{ offset + 1 }] #{ url }\n\n#{ content }", [title: url, url: url], {}]
     end
 
     def persist_answer(content, citations)
@@ -321,6 +389,7 @@ module Comrade
         lane: turn_lane.kind == 'legacy' ? nil : turn_lane.kind,
         model: turn_lane.model,
         effort: turn_lane.effort,
+        mode: @mode.presence,
         first_token_ms: @first_token_ms,
         total_ms: elapsed_ms,
         log: @turn_log.presence,
@@ -419,30 +488,42 @@ module Comrade
       end
     end
 
-    def payload(tool_definitions: DEFINITIONS, final_instruction: nil)
+    def payload(tool_definitions: turn_tools, final_instruction: nil)
+      lines = []
+      lines << IMAGE_MODE_DIRECTIVE if @mode == 'images'
+      lines << final_instruction if final_instruction
       request = wire_request(
         model: turn_lane.model,
         effort: turn_lane.effort,
         transcript: @conversation.to_transcript,
-        final_instruction: final_instruction,
+        system_lines: lines,
       )
       request.merge(tools: tool_definitions)
+    end
+
+    # The tools on offer this turn: image mode swaps web search out.
+    def turn_tools
+      @mode == 'images' ? IMAGE_DEFINITIONS : DEFINITIONS
     end
 
     # The request body's shape — shared by the live payload and the
     # prompt inspector's reconstruction. `transcript` is the conversation:
     # the live turn rides the whole thing, the rebuild scopes it with
-    # before:. `final_instruction` rides only on the cap pass, after the
-    # transcript — the directive leans on everything above it; `tools` is
-    # swapped per call (the cap pass offers none).
-    def wire_request(model:, effort:, transcript:, final_instruction: nil)
+    # before:. `system_lines` ride after the transcript, in order — the
+    # image mode's directive, then the cap pass's final directive, each
+    # leaning on everything above it. `tools` is swapped per call (the
+    # cap pass offers none, image mode offers no web search).
+    def wire_request(model:, effort:, transcript:, system_lines: [], tools: DEFINITIONS)
       messages = [{ role: 'system', content: prompt }, prefs_message].compact
       messages.concat(transcript)
-      messages << { role: 'system', content: final_instruction } if final_instruction
+      # System lines appended after the transcript, in order: the image
+      # mode's directive rides here, then the cap pass's final directive —
+      # each leans on everything above it.
+      system_lines.compact.each { |line| messages << { role: 'system', content: line } }
       request = {
         model: model,
         messages: messages,
-        tools: DEFINITIONS,
+        tools: tools,
         stream: true,
         max_tokens: 8192,
       }

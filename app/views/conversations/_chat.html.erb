@@ -66,6 +66,18 @@
     <%= tag.form data: { turbo: false, 'stream-reader-target': 'form', action: 'submit->stream-reader#submit' },
           class: class_names('mx-auto flex max-w-3xl items-end px-5', 'hidden': gated) do %>
       <%= tag.textarea nil, name: 'content', rows: 1, required: true, placeholder: messages.any? ? 'Reply…' : 'What do you need, comrade?', 'data-action': 'keydown->stream-reader#keydown', class: 'peer grow resize-none rounded-l-lg bg-neutral-300 px-4 py-3 leading-snug text-neutral-900 placeholder:text-neutral-500 focus:bg-neutral-100 focus:outline-none' %>
+      <%# The answer-mode switch: what this one ask rides. "all" is the
+          unforced mode — knowledge, web search, page fetch, the model's
+          pick per question; "images" narrows the turn to pictures. It
+          names the toolbox, not a source, so no turn is mislabeled.
+          Per-turn — it reverts to all after sending, like the composer
+          clearing; a retried turn replays its mode. It is a middle
+          segment of the composer bar: no radius of its own, and
+          self-stretch so it matches the textarea's height as it grows. %>
+      <div class="flex shrink-0 items-stretch self-stretch bg-neutral-300" role="group" aria-label="Answer mode">
+        <button type="button" data-stream-reader-target="webMode" data-action="stream-reader#pickWebMode" class="px-3 text-sm leading-snug font-medium text-neutral-900">all</button>
+        <button type="button" data-stream-reader-target="imageMode" data-action="stream-reader#pickImageMode" class="px-3 text-sm leading-snug text-neutral-500">images</button>
+      </div>
       <button type="submit" data-action="mousedown->stream-reader#holdFocus" class="min-w-[4.5rem] cursor-pointer rounded-r-lg bg-soviet/50 px-4 py-3 font-medium leading-snug text-white peer-focus:bg-soviet/80 hover:bg-soviet">Ask</button>
     <% end %>
   <% end %>

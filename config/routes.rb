@@ -28,6 +28,11 @@ Rails.application.routes.draw do
     end
   end
 
+  # The image proxy: comrade fetches and serves pictures itself — devices
+  # never talk to image hosts directly. The key signs the source url
+  # (ImageProxy); p carries it.
+  get 'img/:key' => 'images#show', as: :image
+
   # Identity: one door, singular resource. create enlists or claims (the
   # gate's "stay in the commune" is client-side — no route, no memory),
   # update saves the party line, destroy steps out to the commune.
