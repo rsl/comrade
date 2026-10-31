@@ -129,7 +129,7 @@ module Comrade
     # snapshot — the transcript part is exact, the two config pieces read
     # as they are now.
     def rebuilt_request(upto:, model:, effort:)
-      wire_request(model: model, effort: effort).merge(messages: rebuilt_messages(upto))
+      wire_request(model: model, effort: effort, transcript: @conversation.to_transcript(before: upto))
     end
 
     private
@@ -420,17 +420,24 @@ module Comrade
     end
 
     def payload(tool_definitions: DEFINITIONS, final_instruction: nil)
-      request = wire_request(model: turn_lane.model, effort: turn_lane.effort, final_instruction: final_instruction)
-      request[:tools] = tool_definitions
-      request
+      request = wire_request(
+        model: turn_lane.model,
+        effort: turn_lane.effort,
+        transcript: @conversation.to_transcript,
+        final_instruction: final_instruction,
+      )
+      request.merge(tools: tool_definitions)
     end
 
     # The request body's shape — shared by the live payload and the
-    # prompt inspector's reconstruction. `final_instruction` rides only
-    # on the cap pass; `tools` is swapped per call (the cap pass offers
-    # none).
-    def wire_request(model:, effort:, final_instruction: nil)
+    # prompt inspector's reconstruction. `transcript` is the conversation:
+    # the live turn rides the whole thing, the rebuild scopes it with
+    # before:. `final_instruction` rides only on the cap pass, after the
+    # transcript — the directive leans on everything above it; `tools` is
+    # swapped per call (the cap pass offers none).
+    def wire_request(model:, effort:, transcript:, final_instruction: nil)
       messages = [{ role: 'system', content: prompt }, prefs_message].compact
+      messages.concat(transcript)
       messages << { role: 'system', content: final_instruction } if final_instruction
       request = {
         model: model,
@@ -441,10 +448,6 @@ module Comrade
       }
       request[:reasoning_effort] = effort if effort
       request
-    end
-
-    def rebuilt_messages(upto)
-      [{ role: 'system', content: prompt }, prefs_message].compact + @conversation.to_transcript(before: upto)
     end
 
     # Prefs ride as a second system message layered after the base prompt —
