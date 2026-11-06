@@ -742,11 +742,11 @@ export default class extends Controller {
     return `${(ms / 1000).toFixed(1)}s`
   }
 
-  // The foreman's dot, stood — the merged action line's marker that this
-  // turn carries a log. Byte-twin of standing_dot in
-  // conversations_helper.rb.
+  // The action line's dot: gold marks a completed turn — every completed
+  // turn's line carries one; red pulsing is the working mark, streaming
+  // only. Byte-twin of standing_dot in conversations_helper.rb.
   get standingDot() {
-    return '<span class="live-dot mr-2 inline-block h-1.5 w-1.5 rounded-full bg-soviet"></span>'
+    return '<span class="live-dot mr-2 inline-block h-1.5 w-1.5 rounded-full bg-gold"></span>'
   }
 
   // The foreman's timestamped log, collapsed under the merged action line
@@ -765,16 +765,16 @@ export default class extends Controller {
   get ownKnowledgeHtml() {
     // Must stay byte-identical with _message.html.erb's double_check footer:
     // the post-first-reply Turbo.visit swaps one for the other.
-    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.standingDot + 'From model knowledge' + this.statsSegment() + '<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
+    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.standingDot + 'From model knowledge' + this.statsSegment() + '<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Check sources</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }
 
   // The action line on a search answer — chips carry the sources, the
-  // line carries the action. Byte-identical with _message.html.erb's
-  // break_down branch.
+  // line names them (From sources) and carries the action. Byte-identical
+  // with _message.html.erb's break_down branch.
   get breakDownHtml() {
-    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.standingDot + this.statsSegment() + '<a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
+    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.standingDot + 'From sources' + this.statsSegment() + ' · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }

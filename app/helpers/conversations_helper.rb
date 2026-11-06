@@ -42,10 +42,12 @@ module ConversationsHelper
     messages.reverse.detect { |turn| turn.role == 'assistant' && turn.stats.present? }&.id
   end
 
-  # The foreman's dot, stood: the merged action line's marker that this
-  # turn carries a log. Byte-twin of the stream reader's completion markup.
+  # The action line's dot: gold marks a completed turn, and every
+  # completed turn's line carries one — red pulsing stays the working
+  # mark (streaming only). Byte-twin of the stream reader's completion
+  # markup.
   def standing_dot
-    tag.span(class: 'live-dot mr-2 inline-block h-1.5 w-1.5 rounded-full bg-soviet')
+    tag.span(class: 'live-dot mr-2 inline-block h-1.5 w-1.5 rounded-full bg-gold')
   end
 
   # The foreman's timestamped log, collapsed under the merged action line
