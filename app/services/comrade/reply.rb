@@ -361,7 +361,7 @@ module Comrade
       content = Tools::FetchPage.call(url: url)
       if content.start_with?('Fetch ', 'No content')
         failed = 'No content could be extracted from that page — do not retry it or similar URLs;'
-        return ["#{ failed } work from the search results or answer from what you have.", []]
+        return ["#{ failed } work from the search results or answer from what you have.", [], {}]
       end
 
       ["[#{ offset + 1 }] #{ url }\n\n#{ content }", [title: url, url: url], {}]

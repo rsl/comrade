@@ -106,17 +106,21 @@ module StreamsReply
     Enumerator.new do |yielder|
       reply.each { |delta| yielder << "data: #{ delta.to_json }\n\n" }
       yielder << "data: [DONE]\n\n"
-    rescue Comrade::Reply::UpstreamError => error
-      upstream_failure(yielder, error)
+    rescue StandardError => error
+      stream_failure(yielder, error)
     end
   end
 
-  # The status is already 200 and streaming, so the failure travels as an
-  # event; the reader renders it into the retry line. Logging it
-  # server-side too — the retry line dies with the tab, the log
-  # doesn't (the 2026-10-24 diagnosis was archaeology without this).
-  def upstream_failure(yielder, error)
-    Rails.logger.error("[reply] upstream failure: #{ error.message }")
+  # The status is already 200 and streaming, so a failure travels as an
+  # event; the reader renders it into the retry line. Any exception the
+  # reply loop raises rides this — an unexpected one used to kill the
+  # stream outright, Puma logging it as a client read error the tab
+  # never saw (2026-11-01: a fetch_page contract miss died this way
+  # three turns running). Logging server-side too, with the raise site —
+  # the retry line dies with the tab, the log doesn't (the 2026-10-24
+  # diagnosis was archaeology without this).
+  def stream_failure(yielder, error)
+    Rails.logger.error("[reply] stream failed: #{ error.class }: #{ error.message } — #{ error.backtrace&.first }")
     yielder << "data: #{ { type: 'error', message: error.message }.to_json }\n\n"
     yielder << "data: [DONE]\n\n"
   end
