@@ -132,10 +132,18 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
   mid-sentence.
 - Scratch files and scripts go in the app's `tmp/` (gitignored), not
   `/tmp`.
-- Don't run `bin/rails tailwindcss:build` by hand in-session: `bin/dev`
-  runs the Tailwind watcher, which rebuilds on every save — new classes
-  are live without a manual build. The manual build exists for
-  watcher-less contexts (fresh checkout, CI) and there it fails with
+- **Never run `bin/rails tailwindcss:build` by hand in-session — no
+  exceptions.** `bin/dev` runs the Tailwind watcher, which boot-builds on
+  start and rebuilds on every save; the watcher is the only build
+  mechanism a session should ever use. Stale CSS (new classes silently
+  not rendering, e.g. an element rendering colorless) means the watcher
+  died — check `bin/dev status` for "tailwind stopped" and fix it with
+  `bin/dev restart`, which restarts the watcher and boot-builds (~100ms).
+  Running the manual build instead papers over the dead watcher and the
+  staleness keeps recurring. (2026-11-04: a session hit exactly this —
+  the watcher had been dead for days, and a hand-run build masked it.)
+  The manual build keeps exactly one job: watcher-less contexts that
+  never have a session (fresh checkout, CI). There it fails with
   "Cannot find the tailwindcss executable": the global
   `BUNDLE_FORCE_RUBY_PLATFORM=true` export forces the exe-less
   ruby-platform gem over the binary one (noted in the 2026-10-22
