@@ -70,8 +70,36 @@ export default class extends Controller {
     // shouldn't steal focus (or pop the keyboard accessory bar). The gate
     // holds the composer hidden, so nothing to focus until it's revealed.
     if (this.freshValue && !this.formTarget.classList.contains("hidden")) this.formTarget.elements.content.focus()
+    this.fitPlaceholder()
     this.element.insertAdjacentHTML("beforeend",
       '<button type="button" data-action="stream-reader#jumpToLatest" class="jump-latest fixed bottom-28 right-64 z-20 hidden cursor-pointer rounded-full bg-soviet/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-soviet/60">↓ latest</button>')
+  }
+
+  // The full greeting doesn't fit one line beside the mode switch at
+  // phone widths — a wrapped placeholder clips inside the one-row
+  // textarea. Measured, not a breakpoint: the A− text-scale steps and
+  // odd viewports all change the budget. Swaps to the short form (the
+  // view carries it as data-short-placeholder, only where a swap makes
+  // sense) when the current placeholder would wrap. One-way: rotating
+  // wide again keeps the short form.
+  fitPlaceholder() {
+    const field = this.formTarget.elements.content
+    const short = field.dataset.shortPlaceholder
+    if (!short || field.placeholder === short) return
+    // A gated page connects with the form still hidden: clientWidth is 0
+    // and everything "overflows". Only judge once the form is rendered —
+    // the gate's reveal calls back in.
+    if (field.clientWidth === 0) return
+    const probe = document.createElement("span")
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:" + getComputedStyle(field).font
+    probe.textContent = field.placeholder
+    document.body.appendChild(probe)
+    const style = getComputedStyle(field)
+    // clientWidth includes the field's padding; the text budget doesn't.
+    const budget = field.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+    const overflows = probe.getBoundingClientRect().width > budget
+    probe.remove()
+    if (overflows) field.placeholder = short
   }
 
   disconnect() {
@@ -796,6 +824,7 @@ export default class extends Controller {
     this.gateTarget.hidden = true
     this.greetingTarget.hidden = false
     this.formTarget.classList.remove("hidden")
+    this.fitPlaceholder()
     document.querySelectorAll("[data-gate-sidebar]").forEach((el) => el.classList.remove("hidden"))
     // The ☰ carries the same gated-hidden as its sidebar and rides along.
     document.querySelector("[data-sidebar-drawer-target='toggle']")?.classList.remove("hidden")
