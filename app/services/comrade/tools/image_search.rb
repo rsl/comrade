@@ -67,10 +67,12 @@ module Comrade
         return unless src
         return unless big_enough?(result)
 
-        { title: result['title'].to_s,
+        {
+          title: result['title'].to_s,
           page: result['url'].to_s,
           src: src,
-          thumbnail: absolute(result['thumbnail_src']) || src, }
+          thumbnail: absolute(result['thumbnail_src']) || src,
+        }
       end
 
       # SearXNG's image engines report each picture's resolution
