@@ -48,15 +48,16 @@ Notes, handoffs, and review guides live in `.agent-notes/sessions/`, named
 Open items get promoted to the registry before going idle; a session never
 archives its own handoff.
 
-## Session docs are public
+## Session docs are untracked working state
 
-Everything under `.agent-notes/` except `roadmap.md` is committed.
-Handoffs are written for public from birth: nothing you wouldn't sign, no
-local paths or key locations that don't matter, and no provenance of
-private work software — scrub sensitive mentions before they land in a
-handoff, because they get committed and pushed as written. `roadmap.md`
-stays untracked by design (governance voice and local details); its
-decision content lives in `docs/architecture.md`.
+Session docs and their archive never enter git — committing one puts a
+bookkeeping commit on whatever branch the close-out runs on, and close-out
+can run on `main`, where commits are forbidden. Written as if public
+regardless: nothing you wouldn't sign, no local paths or key locations
+that don't matter, and no provenance of private work software — because
+the durable content migrates to `roadmap.md` and `docs/architecture.md`,
+which do ship. `roadmap.md` stays untracked by design (governance voice
+and local details); its decision content lives in `docs/architecture.md`.
 
 ## Code intelligence
 
