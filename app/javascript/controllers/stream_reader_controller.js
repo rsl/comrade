@@ -12,7 +12,7 @@ import { marked } from "marked"
 // names it, later exchanges post to its messages endpoint, and the first
 // completed stream visits the conversation's permanent address.
 export default class extends Controller {
-  static targets = ["form", "transcript", "title", "gate", "greeting", "webMode", "imageMode"]
+  static targets = ["form", "transcript", "title", "gate", "greeting", "webMode", "imageMode", "fileInput", "staged", "dropOverlay"]
   static values = { endpoint: String, fresh: Boolean, keepSimple: Boolean }
 
   // The in-flight request, abortable, and the partial answer text it has
@@ -55,6 +55,11 @@ export default class extends Controller {
   // reverts to all on send, like the composer clearing; a retry replays
   // the failed turn's mode.
   imageMode = false
+  // Staged attachments: what the next send carries. Each entry is
+  // {data, full, width, height, fullWidth, fullHeight, sourceUrl} —
+  // data URLs and dimensions, `full` present only when staging shrank
+  // the image. Cleared on send; a failed turn's images ride the retry.
+  staged = []
 
   connect() {
     // The transcript panel is the scroll surface (app shell: the document
@@ -65,6 +70,29 @@ export default class extends Controller {
     // moment there's a draft to send — submitting then steers.
     this.askButton = this.formTarget.querySelector('button[type="submit"]')
     this.formTarget.elements.content.addEventListener("input", () => this.syncAskButton())
+    // Drop anywhere on the conversation stages the dragged images. The
+    // overlay is purely visual; these element-level listeners own the
+    // whole drag lifecycle for everything inside the shell.
+    this.onDragOver = (event) => {
+      if (![...event.dataTransfer.items].some((item) => item.kind === "file" && item.type.startsWith("image/"))) return
+      event.preventDefault()
+      this.showDropOverlay()
+    }
+    this.onDragLeave = (event) => {
+      if (!event.relatedTarget || !this.element.contains(event.relatedTarget)) this.hideDropOverlay()
+    }
+    this.onDrop = (event) => {
+      const files = [...event.dataTransfer.files].filter((file) => file.type.startsWith("image/"))
+      this.hideDropOverlay()
+      if (!files.length) return
+      event.preventDefault()
+      // A browser image drag carries the source page alongside the bytes.
+      const line = event.dataTransfer.getData("text/uri-list").split("\n").find((entry) => entry && !entry.startsWith("#"))
+      this.stageFiles(files, line || null)
+    }
+    this.element.addEventListener("dragover", this.onDragOver)
+    this.element.addEventListener("dragleave", this.onDragLeave)
+    this.element.addEventListener("drop", this.onDrop)
     // A new conversation starts with the composer focused — land and type.
     // Only the landing grabs focus; opening an old conversation to read it
     // shouldn't steal focus (or pop the keyboard accessory bar). The gate
@@ -104,8 +132,136 @@ export default class extends Controller {
 
   disconnect() {
     this.transcriptTarget.removeEventListener("scroll", this.onScroll)
+    this.element.removeEventListener("dragover", this.onDragOver)
+    this.element.removeEventListener("dragleave", this.onDragLeave)
+    this.element.removeEventListener("drop", this.onDrop)
     this.element.querySelector(".jump-latest")?.remove()
     this.stopTurnStatus()
+  }
+
+  showDropOverlay() {
+    this.dropOverlayTarget.classList.replace("hidden", "flex")
+  }
+
+  hideDropOverlay() {
+    this.dropOverlayTarget.classList.replace("flex", "hidden")
+  }
+
+  // The attach segment: the hidden input's picker — on iOS that IS the
+  // Photos picker, the only mobile flow.
+  pickAttachments() {
+    this.fileInputTarget.click()
+  }
+
+  pickFiles(event) {
+    this.stageFiles(event.target.files, null)
+    event.target.value = ""
+  }
+
+  // ⌘V of a screenshot: the clipboard's image files stage like dropped
+  // ones. Only intercepted when images ride the paste — text pastes
+  // stay untouched.
+  paste(event) {
+    const files = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"))
+    if (!files.length) return
+    event.preventDefault()
+    this.stageFiles(files, null)
+  }
+
+  // Staging is keep-or-shrink, format-preserving: at or under ~1280px
+  // the original bytes ride (a PNG screenshot keeps its text crisp);
+  // over the cap, a canvas downsample to ~1280px, JPEG 0.8 — and the
+  // original rides along as `full` for the model's read_image escape
+  // hatch. What this browser can't decode (HEIC outside Safari), it
+  // says so.
+  async stageFiles(files, sourceUrl) {
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        this.showStageNote(`${file.name || "image"} is over the 10 MB cap`)
+        continue
+      }
+      try {
+        this.staged.push(await this.stageFile(file, sourceUrl))
+        this.renderStaged()
+      } catch {
+        this.showStageNote(`${file.name || "image"}: this browser can't decode it`)
+      }
+    }
+  }
+
+  async stageFile(file, sourceUrl) {
+    const bitmap = await createImageBitmap(file)
+    const { width, height } = bitmap
+    if (Math.max(width, height) <= 1280) {
+      bitmap.close()
+      return { data: await this.readAsDataURL(file), width, height, full: null, fullWidth: null, fullHeight: null, sourceUrl }
+    }
+    const scale = 1280 / Math.max(width, height)
+    const canvas = Object.assign(document.createElement("canvas"), { width: Math.round(width * scale), height: Math.round(height * scale) })
+    const context = canvas.getContext("2d")
+    // JPEG has no alpha: fill first, or transparent areas render black.
+    context.fillStyle = "#fff"
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+    return {
+      data: canvas.toDataURL("image/jpeg", 0.8),
+      width: canvas.width,
+      height: canvas.height,
+      full: await this.readAsDataURL(file),
+      fullWidth: width,
+      fullHeight: height,
+      sourceUrl,
+    }
+  }
+
+  readAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    })
+  }
+
+  showStageNote(text) {
+    this.stageNote?.remove()
+    this.stageNote = document.createElement("p")
+    this.stageNote.className = "grow basis-full text-xs text-red-400"
+    this.stageNote.textContent = text
+    this.stagedTarget.append(this.stageNote)
+    this.stagedTarget.classList.remove("hidden")
+  }
+
+  renderStaged() {
+    this.stageNote = null
+    const box = this.stagedTarget
+    box.replaceChildren()
+    this.staged.forEach((image, index) => {
+      const chip = document.createElement("div")
+      chip.className = "flex items-center gap-2 rounded-lg bg-neutral-300 px-2 py-1.5"
+      const thumb = document.createElement("img")
+      thumb.src = image.data
+      thumb.alt = ""
+      thumb.className = "h-10 w-auto rounded"
+      const label = document.createElement("span")
+      label.className = "text-xs text-neutral-500"
+      label.textContent = image.full
+        ? `${image.width}×${image.height} (from ${image.fullWidth}×${image.fullHeight})`
+        : `${image.width}×${image.height}`
+      const remove = document.createElement("button")
+      remove.type = "button"
+      remove.textContent = "×"
+      remove.setAttribute("aria-label", "Remove attachment")
+      remove.className = "cursor-pointer px-1 text-sm text-neutral-500 hover:text-neutral-900"
+      remove.addEventListener("click", () => {
+        this.staged.splice(index, 1)
+        this.renderStaged()
+      })
+      chip.append(thumb, label, remove)
+      box.append(chip)
+    })
+    box.classList.toggle("hidden", !this.staged.length)
   }
 
   updateAutoScroll() {
@@ -191,7 +347,23 @@ export default class extends Controller {
     event.preventDefault()
     const input = event.target.elements.content
     const content = input.value.trim()
-    if (!content) return
+    // An image-only send is legal: empty text with attachments passes.
+    if (!content && !this.staged.length) return
+
+    // The images ride this send; the staged chips clear either way —
+    // the user turn below carries their thumbnails, and a failed turn's
+    // images travel with its retry link.
+    const images = this.staged.map((image) => ({
+      data: image.data,
+      full: image.full,
+      width: image.width,
+      height: image.height,
+      full_width: image.fullWidth,
+      full_height: image.fullHeight,
+      source_url: image.sourceUrl,
+    }))
+    this.staged = []
+    this.renderStaged()
 
     input.value = ""
     this.syncAskButton()
@@ -215,14 +387,14 @@ export default class extends Controller {
       this.currentRequest.abort()
     }
 
-    const answer = this.appendExchange(content)
-    await this.stream(content, interrupted, answer, { retry: false, mode })
+    const answer = this.appendExchange(content, images)
+    await this.stream(content, interrupted, answer, { retry: false, mode, images })
   }
 
   // The one reply path: POST, stream into the given assistant turn, and
   // on any failure leave a retry link bound to the same content — same
-  // mode: a failed image turn retries as an image turn.
-  async stream(content, interrupted, answer, { retry, mode }) {
+  // mode, same images: a failed image turn retries as an image turn.
+  async stream(content, interrupted, answer, { retry, mode, images }) {
     this.partial = ""
     this.pendingCitations = null
     this.pendingStats = null
@@ -238,17 +410,17 @@ export default class extends Controller {
       response = await fetch(this.endpointValue, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ content, interrupted, retry, mode }),
+        body: JSON.stringify({ content, interrupted, retry, mode, images }),
         signal: this.currentRequest.signal,
       })
     } catch (error) {
       if (error.name === "AbortError") return
-      this.showRetry(content, interrupted, answer, null, mode)
+      this.showRetry(content, interrupted, answer, null, mode, images)
       return
     }
 
     if (!response.ok) {
-      this.showRetry(content, interrupted, answer, null, mode)
+      this.showRetry(content, interrupted, answer, null, mode, images)
       return
     }
 
@@ -262,11 +434,11 @@ export default class extends Controller {
 
     this.startTurnStatus(answer)
     try {
-      completed = await this.readStream(response.body, answer, content, interrupted)
+      completed = await this.readStream(response.body, answer, content, interrupted, mode, images)
     } catch (error) {
       // A steered-away stream dies intentionally; its partial answer
       // stays on the page and in the transcript via the next request.
-      if (error.name !== "AbortError") this.showRetry(content, interrupted, answer, null, mode)
+      if (error.name !== "AbortError") this.showRetry(content, interrupted, answer, null, mode, images)
       return
     } finally {
       if (this.currentRequest === request) this.currentRequest = null
@@ -288,8 +460,8 @@ export default class extends Controller {
   // the retry request skips user persistence and carries whatever partial
   // answer had streamed as interruption context. The reason, when the
   // server sent one, names the upstream failure.
-  showRetry(content, interrupted, answer, reason, mode) {
-    this.failed = { content, interrupted, mode }
+  showRetry(content, interrupted, answer, reason, mode, images = []) {
+    this.failed = { content, interrupted, mode, images }
 
     const line = document.createElement("p")
     line.className = "retry-line mt-2 text-xs text-red-400"
@@ -313,7 +485,7 @@ export default class extends Controller {
 
   async retry() {
     this.clearRetries()
-    const { content, interrupted, mode } = this.failed
+    const { content, interrupted, mode, images } = this.failed
 
     // The retried answer arrives as a fresh assistant turn below the
     // failed one; the user turn is already on the page and in the DB.
@@ -322,10 +494,10 @@ export default class extends Controller {
     const answer = turns[turns.length - 1]
     this.contentEl = answer.querySelector("div")
 
-    await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null, mode })
+    await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null, mode, images })
   }
 
-  appendExchange(content) {
+  appendExchange(content, images = []) {
     // First exchange: the greeting goes with your message, not with the
     // reply — the transcript top-aligns from here (empty-state centering
     // is my-auto on the card, which is gone or hidden by now).
@@ -333,14 +505,17 @@ export default class extends Controller {
     // You just sent: the reply deserves an audience. Re-pin the reader.
     this.autoScroll = true
     this.element.querySelector(".jump-latest")?.classList.add("hidden")
-    this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("user", content))
+    this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("user", content, images))
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
     // The reserved title row becomes the conversation's working title —
-    // the sent question, truncated exactly like Conversation.start! — so
-    // the row reads the same before and after the Turbo.visit swap.
+    // the sent question, truncated exactly like Conversation.start! (an
+    // image-only send names itself the same way the server's fallback
+    // does) — so the row reads the same before and after the Turbo.visit
+    // swap.
     if (this.hasTitleTarget) {
       this.titleTarget.classList.remove("invisible")
-      this.titleTarget.querySelector("span").textContent = content.replace(/\s+/g, " ").slice(0, 50)
+      this.titleTarget.querySelector("span").textContent =
+        content.replace(/\s+/g, " ").slice(0, 50) || (images.length === 1 ? "Image" : `${images.length} images`)
     }
     const turns = this.transcriptTarget.querySelectorAll("article")
     const answer = turns[turns.length - 1]
@@ -462,15 +637,35 @@ export default class extends Controller {
     this.renderCitations(answer)
   }
 
-  turnHtml(role, content) {
+  turnHtml(role, content, images = []) {
     const label = role === "user" ? "You" : "Comrade"
+    // Attachments render above the turn's text, same slot the tool chips
+    // and image strips take in answers. Byte-identical with
+    // _message.html.erb's user branch (styling in c-attachment-strip).
+    const strip = images.length ? this.attachmentStripHtml(images) : ""
     return `<article class="${role === "user" ? "text-neutral-100" : "text-neutral-300"}">
       <p class="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">${label}</p>
+      ${strip}
       <div class="whitespace-pre-wrap leading-relaxed">${content}</div>
     </article>`
   }
 
-  async readStream(body, answer, content, interrupted) {
+  // The staged copies as the turn's thumbnail strip: data URLs — the
+  // bytes aren't stored yet. The reload twin reads the same refs back
+  // as /uploads/ URLs (attachment_strip in conversations_helper.rb);
+  // identical markup, identical pixels, different address only.
+  attachmentStripHtml(images) {
+    const escape = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
+    const buttons = images.map((image) => {
+      const full = image.full || image.data
+      const caption = image.sourceUrl || "attached image"
+      return `<button type="button" class="shrink-0 cursor-pointer" data-action="click->lightbox#open" data-full-url="${escape(full)}" data-thumb-url="${escape(image.data)}" data-caption="${escape(caption)}"><img src="${escape(image.data)}" alt="attached image" loading="lazy" class="h-24 w-auto rounded"></button>`
+    }).join("")
+    return `<div class="image-strip c-attachment-strip">${buttons}</div>`
+  }
+
+  async readStream(body, answer, content, interrupted, mode, images) {
     const reader = body.getReader()
     const decoder = new TextDecoder()
     let buffer = ""
@@ -498,7 +693,7 @@ export default class extends Controller {
         // reason lands in the retry line; the [DONE] success path never
         // runs, so no citation render and no Turbo visit.
         if (parsed.type === "error") {
-          this.showRetry(content, interrupted, answer, parsed.message, mode)
+          this.showRetry(content, interrupted, answer, parsed.message, mode, images)
           return false
         }
         // The server recognized this retry as an already-answered turn:
@@ -542,7 +737,10 @@ export default class extends Controller {
       // alone. The status line keeps ticking: the stream is still working.
       this.partial = ""
       this.footerSeen = false
-      this.turnPhase = event.name === "fetch_page" ? "fetching" : "searching"
+      this.turnPhase =
+        event.name === "fetch_page" ? "fetching"
+        : event.name === "read_image" ? "reading"
+        : "searching"
       this.appendTurnLog(this.turnStamp(this.toolLogLine(event)))
       this.renderTurnStatus()
       // Chips collect into one group div (matching the server render):
@@ -716,12 +914,14 @@ export default class extends Controller {
   toolLogLine(event) {
     if (event.name === "web_search") return `searched: ${event.query}`
     if (event.name === "image_search") return `searched images: ${event.query}`
+    if (event.name === "read_image") return `read image: ${event.key}`
     return `fetched: ${event.url}`
   }
 
   toolChip(event) {
     const label =
       event.name === "image_search" ? `searched images for ${event.query}`
+      : event.name === "read_image" ? `read image ${event.key}`
       : event.query ? `searched for ${event.query}`
       : `fetched ${event.url}`
     // Chip inside the group (see applyEvent): tight, the group div carries

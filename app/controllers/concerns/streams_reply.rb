@@ -13,6 +13,12 @@ module StreamsReply
     rescue_from ActiveRecord::RecordInvalid do |error|
       render json: { errors: error.record.errors.full_messages }, status: :unprocessable_content
     end
+    # A staged attachment the store won't take (wrong type, empty, over
+    # the cap) is the same kind of answer as a validation failure — the
+    # turn never starts.
+    rescue_from Comrade::ImageStore::Rejected do |error|
+      render json: { errors: [error.message] }, status: :unprocessable_content
+    end
   end
 
   private
@@ -56,7 +62,13 @@ module StreamsReply
   #   - stored, unanswered (only tool rows behind it): the genuine retry —
   #     call_retry, user persistence skipped.
   def reply_options(conversation, content, mode)
-    { conversation: conversation, content: content, interrupted: params[:interrupted], mode: mode }
+    {
+      conversation: conversation,
+      content: content,
+      interrupted: params[:interrupted],
+      mode: mode,
+      images: Array(params[:images]),
+    }
   end
 
   def retry_reply(conversation, content, mode)
@@ -66,16 +78,19 @@ module StreamsReply
     when :answered
       duplicate_stream
     else
-      Comrade::Reply.call_retry(**reply_options(conversation, content, mode))
+      # call_retry skips user persistence — the refs live on the row, so
+      # the re-sent staging payload has nothing to do there.
+      Comrade::Reply.call_retry(**reply_options(conversation, content, mode).except(:images))
     end
   end
 
   # Where the retried turn stands, from the transcript's own record.
-  # Safe navigation carries the no-user-message case: a nil strip is
-  # never equal to real content, so it reads as :missing.
+  # Safe navigation carries the no-user-message case, and an image-only
+  # turn's nil content reads as empty — a staged-images retry matches
+  # its own row instead of re-persisting a duplicate.
   def retry_case(conversation, content)
     last_user = conversation.messages.where(role: 'user').last
-    return :missing if last_user&.content&.strip != content.strip
+    return :missing if (last_user&.content || '').strip != content.to_s.strip
 
     answered = conversation.messages.where(role: 'assistant')
       .where('id > ? AND content IS NOT NULL', last_user.id).exists?

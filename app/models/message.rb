@@ -2,10 +2,11 @@
 # user / assistant / tool — enforced here so the transcript is always
 # wire-shaped. The system prompt is config, never a row. Content presence
 # is a user-message guarantee: assistant tool_calls rows (2b) legitimately
-# carry null content.
+# carry null content. A user turn may carry images instead of text, so
+# presence means content or images.
 class Message < ApplicationRecord
   belongs_to :conversation
 
   validates :role, inclusion: { in: %w[user assistant tool] }
-  validates :content, presence: true, if: -> { role == 'user' }
+  validates :content, presence: true, if: -> { role == 'user' && images.blank? }
 end

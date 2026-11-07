@@ -30,7 +30,10 @@
     <% if message.role == 'assistant' %>
       <div class="leading-relaxed"><%= cited_paragraphs(message) %></div>
     <% else %>
-      <div class="leading-relaxed whitespace-pre-wrap"><%= message.content.strip %></div>
+      <% if message.images.present? %>
+        <%= attachment_strip(message) %>
+      <% end %>
+      <div class="leading-relaxed whitespace-pre-wrap"><%= message.content.to_s.strip %></div>
     <% end %>
     <%# The foreman's log rides the action line on the latest stats answer:
         the total time toggles the log, and the log sits collapsed under

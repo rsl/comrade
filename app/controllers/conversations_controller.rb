@@ -57,7 +57,11 @@ class ConversationsController < ApplicationController
   # first exchange. The owner is stamped from presence: nil on the
   # commune, so anon asks land in the shared stream.
   def create
-    conversation = Conversation.start!(content: params.require(:content), enlistee: current_enlistee)
+    conversation = Conversation.start!(
+      content: params.require(:content),
+      images: Array(params[:images]),
+      enlistee: current_enlistee,
+    )
     response.status = :created
     response.headers['Location'] = conversation_url(conversation)
     response.headers['X-Conversation-Id'] = conversation.id.to_s
