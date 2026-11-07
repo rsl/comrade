@@ -93,9 +93,14 @@ via Selenium scripts in `tmp/` — selenium-webdriver is bundled.
 - Wrap `render "partial", locals: {...}` incantations in helper methods so
   call sites read like HTML nesting. Helpers derive redundant args
   internally; callers pass only what's context-specific.
-- Repeated class strings become constants, not copy-paste. Design
-  rationale lives in the component's code comments, where it travels with
-  the component.
+- A class list duplicated across the server render and its client twin
+  becomes a `c-` component class in `app/assets/tailwind/application.css`
+  — the trigger is render sites × string length; one-off styling stays
+  inline, and within one language a repeated string stays a constant.
+  State classes (`hidden`, toggle marks) ride the call site, never the
+  definition; design rationale lives on the definition, which is where
+  it travels with the component. The portable rule is agency's
+  tailwind-components skill.
 - No refresh-to-see-it flows: if a server-side change alters what a page
   shows, the page updates live (Stimulus/Turbo).
 

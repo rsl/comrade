@@ -407,7 +407,7 @@ export default class extends Controller {
     this.turnLog.push(text)
     if (!this.logEl) {
       this.logEl = document.createElement("pre")
-      this.logEl.className = "turn-log hidden mt-2 whitespace-pre-wrap border-l-2 border-soviet/40 pl-2 text-xs leading-relaxed text-neutral-500"
+      this.logEl.className = "c-turn-log hidden"
       this.statusEl.after(this.logEl)
     }
     this.logEl.textContent = this.turnLog.join("\n")
@@ -417,7 +417,7 @@ export default class extends Controller {
     // The log is found from the clicked line, not an instance field: the
     // server render's status lines (older turns after a reload) carry the
     // same action with no controller state behind them.
-    event.currentTarget.closest("article")?.querySelector(".turn-log")?.classList.toggle("hidden")
+    event.currentTarget.closest("article")?.querySelector(".c-turn-log")?.classList.toggle("hidden")
   }
 
   // Completion retires the ticking status: renderCitations swaps the whole
@@ -785,7 +785,7 @@ export default class extends Controller {
     const stats = this.pendingStats
     if (!stats?.log) return
     const pre = document.createElement("pre")
-    pre.className = "turn-log hidden mt-2 whitespace-pre-wrap border-l-2 border-soviet/40 pl-2 text-xs leading-relaxed text-neutral-500"
+    pre.className = "c-turn-log hidden"
     pre.textContent = stats.log.join("\n")
     answer.insertAdjacentElement("beforeend", pre)
   }

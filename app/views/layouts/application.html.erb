@@ -38,7 +38,7 @@
         Desktop never sees either — the sidebar is persistent there. %>
     <%= tag.button '☰', aria: { label: 'Conversations' }, data: { 'sidebar-drawer-target': 'toggle', action: 'sidebar-drawer#toggle' },
           class: class_names('sm:hidden fixed left-3 top-3 z-30 cursor-pointer rounded bg-soviet/20 px-2 py-1 text-sm leading-none text-neutral-300 hover:bg-soviet/50', 'hidden': gated) %>
-    <div class="shell fixed left-0 right-0 top-0 flex flex-row-reverse" data-controller="sidebar-resize">
+    <div class="c-shell fixed left-0 right-0 top-0 flex flex-row-reverse" data-controller="sidebar-resize">
       <%# The backdrop lives inside the shell: iOS Safari gives position:fixed
           elements their own stacking context, so a body-level backdrop would
           paint over the whole shell — drawer included (2026-10-24, "unviewably

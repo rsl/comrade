@@ -56,9 +56,10 @@ module ConversationsHelper
   def turn_log_pre(message)
     return '' if message.stats['log'].blank?
 
-    tag.pre(message.stats['log'].join("\n"),
-      class: 'turn-log hidden mt-2 whitespace-pre-wrap border-l-2 border-soviet/40 ' \
-             'pl-2 text-xs leading-relaxed text-neutral-500',)
+    # Styling is the c-turn-log component class (application.css); `hidden`
+    # is the collapsed state. Byte-twin of the stream reader's
+    # appendTurnLogPre — same element, same classes, both renders.
+    tag.pre(message.stats['log'].join("\n"), class: 'c-turn-log hidden')
   end
 
   # The archive row's label: the conversation's whole first line — the
