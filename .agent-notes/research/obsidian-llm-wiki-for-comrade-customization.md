@@ -10,6 +10,9 @@ Overnight research, 2026-11-06; reworked same weekend after the user's
 verdicts:
 per-user **vaulting** (not per-user sections) is the decided shape, the
 shared household vault is in, and the raw-sources layer is answered below.
+Amended 2026-11-07 (with the developer): background ingest of sources —
+the runtime enqueues fetched pages, a serialized job queue writes
+`sources/`; see "Background ingest of sources."
 Research doc — nothing here is built.
 
 ## Headline design
@@ -49,10 +52,11 @@ comrade-wikis/
   which vault a fact belongs in; sessions write the text. See "The filing
   classifier" below.
 - **Maintainers are opencode sessions** on the operator's machine, under
-  a per-vault schema doc (the Karpathy `AGENTS.md` layer). Comrade's
-  runtime has only web-search and page-fetch tools and must never grow
-  wiki-writing at runtime — that would move the boundary from a column
-  to a path convention.
+  a per-vault schema doc (the Karpathy `AGENTS.md` layer), plus one
+  background-ingest path: comrade's runtime enqueues fetched pages to a
+  serialized job queue that files them into `sources/` — a handoff, not
+  a write. The runtime never opens a vault, names a path, or makes a
+  filing decision; vault synthesis and promotion stay session-side.
 
 ## What comrade has today (the constraints)
 
@@ -211,14 +215,40 @@ Rules that keep it safe:
   don't exist in Obsidian), with a mechanical broken-citation lint —
   MindBase's `broken citation` check is the model: a script verifies the
   cited source path still exists.
-- **It's a clipping library, not surveillance.** Sources land because a
-  session clipped them during wiki work. Comrade's turns pass fetched
-  page text through memory without persisting it, and automatic logging
-  of every comrade's searches would be calibration-adjacent logging by
-  another name — don't build it into this layer.
+- **It's a clipping library, not surveillance.** Two ingest paths, one
+  anonymity rule. Sessions clip sources during wiki work (non-fetch
+  material: local notes, conversation-derived facts). Comrade's runtime
+  enqueues fetched pages to the background ingest job (see "Background
+  ingest of sources" below). What neither path may record is *who*:
+  provenance names the page, never the comrade. The calibration-adjacent
+  danger is attribution, not ingestion — "comrade X searched this" is
+  the forbidden sentence, not "this page exists in the library."
 - **Growth is unbounded, so a retention policy comes day one** (e.g.
   expire un-cited sources after N months; lint lists citations so "is
   this source still cited?" is scriptable).
+
+## Background ingest of sources
+
+The runtime path into `sources/` (added 2026-11-07, with rsl): after a
+turn's page fetches, comrade enqueues the URL and fetched text to a
+dedicated GoodJob queue — `wiki_ingest`, concurrency 1. Enqueueing is a
+handoff, not a wiki write: the runtime opens no vault, names no path,
+makes no filing decision. The job does the writing, anonymously.
+
+- **Why a job:** ingest is LLM calls plus file writes — seconds to
+  minutes. Inline would stall the turn; async holds nothing back.
+- **Why serialized:** one job at a time closes job-vs-job races on the
+  same vaults and documents. Job-vs-session writes (a maintainer session
+  rewriting a page mid-ingest) stay last-write-wins, covered by the
+  git-per-vault discipline and the sessions-edit-humans-browse habit.
+- **Idempotent under retry:** GoodJob retries. Dedupe by URL makes a
+  retried source ingest a no-op; log entries carry an idempotency key
+  (URL + date) so a retry can't double-append `log.md`.
+- **Retention ships with the job, not deferred.** A robot curator grows
+  the layer unbounded; the expire-un-cited-sources lint lands in the
+  same increment.
+- **Scope:** `sources/` only. The job never writes a vault, and
+  promotion stays behind the human gate.
 
 ## The filing classifier
 
@@ -356,6 +386,10 @@ Gotchas, concrete and sourced:
 14. **Performance is fine at this scale** — attachments, not notes, are
     the killer; the sources layer is the only place volume lives, and it
     is deliberately outside the wiki vaults.
+15. **Two writers, one layer.** Background ingest jobs and maintainer
+    sessions both write the wiki tree. The serialized queue closes
+    job-vs-job; job-vs-session is last-write-wins like agent+Obsidian
+    (gotcha 3) — the same habit covers it.
 
 ## Rejected alternatives
 
@@ -378,11 +412,16 @@ Gotchas, concrete and sourced:
 
 ## Recommendation
 
-1. Build nothing yet. Today's customization (Party Line + keep-simple)
-   doesn't need a wiki. **The trigger:** sessions re-deriving the same
-   per-comrade context from transcripts more than occasionally, prefs
-   lines fighting the 8192-token budget, or the prompt file accumulating
-   household lines that need maintenance.
+1. Build nothing yet — with one amendment (2026-11-07): the sources
+   layer's trigger is **content preservation**, independent of
+   customization volume. When fetched-page research starts dying in
+   transcript decay, or the same URL gets re-fetched across sessions,
+   the `sources/` layer plus the background ingest job justify
+   themselves on preservation alone. The customization triggers stand
+   as written: sessions re-deriving the same per-comrade context from
+   transcripts more than occasionally, prefs lines fighting the
+   8192-token budget, or the prompt file accumulating household lines
+   that need maintenance.
 2. When triggered, start with the shape above: `sources/` + `household/`
    + one vault per comrade, sessions as maintainers under per-vault
    schema docs, promotion gates as specified.
@@ -392,9 +431,9 @@ Gotchas, concrete and sourced:
    from any sync.
 4. The smallest first increment: `sources/` + `household/` only, no
    per-comrade vaults — household knowledge in the prompt file gets a
-   maintenance surface before any per-comrade knowledge does. Per-comrade
-   vaults arrive with the first comrade whose context outgrows prefs
-   lines.
+   maintenance surface before any per-comrade knowledge does, and the
+   background source-ingest job rides with it. Per-comrade vaults
+   arrive with the first comrade whose context outgrows prefs lines.
 
 ## Search log
 
