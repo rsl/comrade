@@ -186,6 +186,9 @@ module Comrade
     def rebuilt_request(upto:, model:, effort:, mode: nil)
       lines = []
       lines << IMAGE_MODE_DIRECTIVE if mode == 'images'
+      # The turn's own clock: the inspector reconstructs what the answer
+      # actually saw, not what time it is now.
+      @clock = upto.created_at
       wire_request(
         model: model,
         effort: effort,
@@ -602,7 +605,10 @@ module Comrade
     # leaning on everything above it. `tools` is swapped per call (the
     # cap pass offers none, image mode offers no web search).
     def wire_request(model:, effort:, transcript:, system_lines: [], tools: DEFINITIONS)
-      messages = [{ role: 'system', content: prompt }, prefs_message].compact
+      # The clock rides the base prompt; the rebuild pins it to the turn's
+      # own time (see rebuilt_request), the live turn uses now.
+      base = "#{ prompt }\n\n#{ clock_line(@clock || Time.current) }"
+      messages = [{ role: 'system', content: base }, prefs_message].compact
       messages.concat(transcript)
       # System lines appended after the transcript, in order: the image
       # mode's directive rides here, then the cap pass's final directive —
@@ -617,6 +623,13 @@ module Comrade
       }
       request[:reasoning_effort] = effort if effort
       request
+    end
+
+    # The model's training prior fills any vacuum about the current date —
+    # "now == 2025" — so every request states the real clock. The zone is
+    # the house zone (config.time_zone).
+    def clock_line(clock)
+      "Right now it is #{ clock.strftime('%A, %B %-d, %Y at %-l:%M %P %Z') }."
     end
 
     # Prefs ride as a second system message layered after the base prompt —
