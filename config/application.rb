@@ -19,7 +19,11 @@ module Comrade
     # Configuration for the application, engines, and railties goes here.
     # These settings can be overridden in specific environments using the files
     # in config/environments, which are processed later.
-    # config.time_zone = "Central Time (US & Canada)"
+    # The house zone: date displays and the archive page's Today/Yesterday
+    # buckets read in this zone. COMRADE_TIME_ZONE overrides; the default
+    # keeps evening conversations out of the wrong day-bucket (UTC would
+    # misbucket them for the house zone).
+    config.time_zone = ENV.fetch('COMRADE_TIME_ZONE', 'Eastern Time (US & Canada)')
     # config.eager_load_paths << Rails.root.join("extras")
 
     # Postgres-backed job queue (production override lives in production.rb).

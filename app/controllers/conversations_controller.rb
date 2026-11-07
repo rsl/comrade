@@ -2,32 +2,36 @@ class ConversationsController < ApplicationController
   include StreamsReply
 
   def index
+    # The chat surface at root; the conversation listings — the full
+    # Recent page and the archives — are index with a mode param: one
+    # listing shape, two scopes. No query on the plain chat root; the
+    # sidebar runs its own.
     @archived = params[:archived].present?
-    @conversations = if @archived
-      Conversation.archived.for_enlistee(current_enlistee).order(:archived_at)
-    else
-      Conversation.live.for_enlistee(current_enlistee).order(id: :desc).limit(20)
-    end
-  end
-
-  # The archive listing — read-only titles, the only door to destroy.
-  def archived
-    @archived = true
-    @conversations = Conversation.archived.for_enlistee(current_enlistee).order(:archived_at)
+    @all = params[:all].present?
+    @conversations =
+      if @archived
+        Conversation.archived.for_enlistee(current_enlistee).order(created_at: :desc)
+      elsif @all
+        Conversation.live.for_enlistee(current_enlistee).order(created_at: :desc)
+      end
   end
 
   def show
     @conversation = scoped_conversations.find(params[:id])
   end
 
-  # Archive: remove the sidebar row in place so edit mode survives
-  # multi-archive. If the archived conversation is the one on screen (or the
-  # client doesn't speak Turbo Stream), fall back to a redirect.
+  # Archive: remove the row in place so list state survives multi-archive.
+  # Two targets: the sidebar's row (dom_id) and the listing page's row
+  # (listing_ prefix) — on any given page one of the two is absent, and a
+  # remove with no target no-ops silently. If the client doesn't speak
+  # Turbo Stream, or the archived conversation is the one on screen (the
+  # page under you would yank away), fall back to a redirect.
   def archive
     conversation = scoped_conversations.find(params[:id])
     conversation.archive
     if remove_row_in_place?(conversation)
       render turbo_stream: turbo_stream.remove(conversation)
+        .concat(turbo_stream.remove("listing_#{ dom_id(conversation) }"))
     else
       redirect_back_or_to root_path
     end
@@ -38,12 +42,13 @@ class ConversationsController < ApplicationController
     redirect_back_or_to root_path
   end
 
-  # Destroyed for real: messages cascade with it. Only reachable for
-  # archived conversations — destruction is always the second step.
+  # Destroyed for real: messages cascade with it. Reachable for live and
+  # archived conversations alike — the confirm dialog is the guard, not a
+  # two-step path through the archives.
   def destroy
-    conversation = Conversation.archived.for_enlistee(current_enlistee).find(params[:id])
+    conversation = scoped_conversations.find(params[:id])
     conversation.destroy!
-    redirect_to archived_conversations_path
+    redirect_back_or_to all_conversations_path
   end
 
   # Creates the conversation (title derived from the first message) and

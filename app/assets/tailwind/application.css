@@ -18,9 +18,37 @@
   --color-cream-bright: #f3e9cf;
 }
 
+/* House component classes — styling shared by elements the server render
+   and its client twins both construct. `c-` marks the family so a house
+   class never reads as a Tailwind utility; state classes (`hidden`,
+   toggle marks) ride the call site, never the definition. The one
+   exception to `@layer components` below is deliberate and commented. */
+@layer components {
+  /* The foreman's timestamped log <pre>: collapsed until the action line's
+     total time opens it — the toggle targets .c-turn-log and flips hidden.
+     Shared by the server render (turn_log_pre) and both client renders;
+     one definition replaces what was a byte-twin utility string. */
+  .c-turn-log {
+    @apply mt-2 whitespace-pre-wrap border-l-2 border-soviet/40 pl-2 text-xs leading-relaxed text-neutral-500;
+  }
+}
+
 /* App shell height tracks the visual viewport (see visual_viewport_boot.js):
    viewport units can't express "minus keyboard", and a fixed shell sized to
-   the layout viewport ghosts upward when iOS Safari pans on focus. */
-.shell {
+   the layout viewport ghosts upward when iOS Safari pans on focus.
+   Unlayered deliberately: unlayered rules outrank every utility layer, and
+   this height must never lose to a call-site utility. */
+.c-shell {
   height: var(--shell-height, 100%);
+}
+
+/* iOS Safari auto-zooms the visual viewport on focus when the focused
+   input computes below 16px (its minimum "legible input" size) — the
+   zoom pans the fixed shell off-center under the keyboard. The composer
+   inherits the rem-scaled root size, so the A− step (87.5%) pushed it to
+   14px and triggered exactly that. The floor keeps the input legible
+   enough to never zoom while still scaling at 100% and above. (2026-10-30) */
+input,
+textarea {
+  font-size: max(1rem, 16px);
 }

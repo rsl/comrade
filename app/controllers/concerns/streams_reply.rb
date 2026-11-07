@@ -28,18 +28,67 @@ module StreamsReply
   def stream_reply(conversation)
     count_calibration_signal
     set_stream_headers
+    content = params.require(:content)
+    # The reader's search-mode switch: only a known mode survives —
+    # anything else is the default turn.
+    mode = params[:mode].to_s.in?(%w[images]) ? 'images' : nil
     # :reek:ControlParameter — the request picks the entry point; that is
     # the controller's job.
     reply = if ActiveModel::Type::Boolean.new.cast(params[:retry])
-      Comrade::Reply.call_retry(conversation: conversation,
-        content: params.require(:content),
-        interrupted: params[:interrupted],)
+      retry_reply(conversation, content, mode)
     else
-      Comrade::Reply.call(conversation: conversation,
-        content: params.require(:content),
-        interrupted: params[:interrupted],)
+      Comrade::Reply.call(**reply_options(conversation, content, mode))
     end
     self.response_body = reply_enumerator(reply)
+  end
+
+  # A retry re-sends a turn the client believes failed — but the client
+  # can't tell a connection that died after the server finished from a
+  # server that died mid-answer. The database can, so the retry is a
+  # three-way call:
+  #   - the turn was never stored (the request was lost before
+  #     persistence): the normal path, which persists the user message
+  #     before streaming — the retry repairs itself instead of answering
+  #     a question the transcript will never show;
+  #   - stored and already answered (an assistant row with content after
+  #     it): a duplicate no-op — the client discards its empty retry turn
+  #     and a fresh page visits the true transcript;
+  #   - stored, unanswered (only tool rows behind it): the genuine retry —
+  #     call_retry, user persistence skipped.
+  def reply_options(conversation, content, mode)
+    { conversation: conversation, content: content, interrupted: params[:interrupted], mode: mode }
+  end
+
+  def retry_reply(conversation, content, mode)
+    case retry_case(conversation, content)
+    when :missing
+      Comrade::Reply.call(**reply_options(conversation, content, mode))
+    when :answered
+      duplicate_stream
+    else
+      Comrade::Reply.call_retry(**reply_options(conversation, content, mode))
+    end
+  end
+
+  # Where the retried turn stands, from the transcript's own record.
+  # Safe navigation carries the no-user-message case: a nil strip is
+  # never equal to real content, so it reads as :missing.
+  def retry_case(conversation, content)
+    last_user = conversation.messages.where(role: 'user').last
+    return :missing if last_user&.content&.strip != content.strip
+
+    answered = conversation.messages.where(role: 'assistant')
+      .where('id > ? AND content IS NOT NULL', last_user.id).exists?
+    answered ? :answered : :pending
+  end
+
+  # The already-answered retry: no new work, just the events the client
+  # needs to treat the turn as complete.
+  def duplicate_stream
+    Enumerator.new do |yielder|
+      yielder << "data: #{ { type: 'duplicate' }.to_json }\n\n"
+      yielder << "data: [DONE]\n\n"
+    end
   end
 
   def set_stream_headers
@@ -52,14 +101,22 @@ module StreamsReply
     Enumerator.new do |yielder|
       reply.each { |delta| yielder << "data: #{ delta.to_json }\n\n" }
       yielder << "data: [DONE]\n\n"
-    rescue Comrade::Reply::UpstreamError => error
-      # The status is already 200 and streaming, so the failure travels as
-      # an event; the reader renders it into the retry line. Logging it
-      # server-side too — the retry line dies with the tab, the log
-      # doesn't (the 2026-10-24 diagnosis was archaeology without this).
-      Rails.logger.error("[reply] upstream failure: #{ error.message }")
-      yielder << "data: #{ { type: 'error', message: error.message }.to_json }\n\n"
-      yielder << "data: [DONE]\n\n"
+    rescue StandardError => error
+      stream_failure(yielder, error)
     end
+  end
+
+  # The status is already 200 and streaming, so a failure travels as an
+  # event; the reader renders it into the retry line. Any exception the
+  # reply loop raises rides this — an unexpected one used to kill the
+  # stream outright, Puma logging it as a client read error the tab
+  # never saw (2026-11-01: a fetch_page contract miss died this way
+  # three turns running). Logging server-side too, with the raise site —
+  # the retry line dies with the tab, the log doesn't (the 2026-10-24
+  # diagnosis was archaeology without this).
+  def stream_failure(yielder, error)
+    Rails.logger.error("[reply] stream failed: #{ error.class }: #{ error.message } — #{ error.backtrace&.first }")
+    yielder << "data: #{ { type: 'error', message: error.message }.to_json }\n\n"
+    yielder << "data: [DONE]\n\n"
   end
 end

@@ -11,14 +11,27 @@ Rails.application.routes.draw do
 
   resources :conversations, only: %i[index create show destroy] do
     collection do
-      get :archived
+      # The mode rides as a route default: /conversations/archived and
+      # /conversations/all are index with the param set — static path
+      # segments don't become params on their own.
+      get 'archived', action: :index, defaults: { archived: true }
+      get 'all', action: :index, defaults: { all: true }
     end
     member do
       patch :archive
       patch :unarchive
     end
-    resources :messages, only: [:create]
+    resources :messages, only: [:create] do
+      member do
+        get :prompt
+      end
+    end
   end
+
+  # The image proxy: comrade fetches and serves pictures itself — devices
+  # never talk to image hosts directly. The key signs the source url
+  # (ImageProxy); p carries it.
+  get 'img/:key' => 'images#show', as: :image
 
   # Identity: one door, singular resource. create enlists or claims (the
   # gate's "stay in the commune" is client-side — no route, no memory),

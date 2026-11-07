@@ -418,7 +418,7 @@ Layout/ArrayAlignment:
   #
   #     array = [1, 2, 3,
   #       4, 5, 6]
-  EnforcedStyle: with_first_element
+  EnforcedStyle: with_fixed_indentation
   SupportedStyles:
     - with_first_element
     - with_fixed_indentation
@@ -852,11 +852,12 @@ Layout/FirstArrayElementIndentation:
   # but it can be overridden by setting this parameter.
   IndentationWidth: ~
 
+# Updated Enabled to true
 Layout/FirstArrayElementLineBreak:
   Description: >-
                  Checks for a line break before the first element in a
                  multi-line array.
-  Enabled: false
+  Enabled: true
   VersionAdded: '0.49'
   AllowMultilineFinalElement: false
 
@@ -886,19 +887,21 @@ Layout/FirstHashElementIndentation:
   # but it can be overridden by setting this parameter.
   IndentationWidth: ~
 
+# Updated Enabled to true
 Layout/FirstHashElementLineBreak:
   Description: >-
                  Checks for a line break before the first element in a
                  multi-line hash.
-  Enabled: false
+  Enabled: true
   VersionAdded: '0.49'
   AllowMultilineFinalElement: false
 
+# Updated Enabled to true
 Layout/FirstMethodArgumentLineBreak:
   Description: >-
                  Checks for a line break before the first argument in a
                  multi-line method call.
-  Enabled: false
+  Enabled: true
   VersionAdded: '0.49'
   AllowMultilineFinalElement: false
   AllowedMethods: []
@@ -4573,11 +4576,14 @@ Style/LambdaCall:
     - call
     - braces
 
+# Disabled: Layout/RejectLineContinuation bans the backslash form, so
+# this cop's `\`-over-`+` preference contradicts the house join (`<<` or
+# a heredoc).
 Style/LineEndConcatenation:
   Description: >-
                  Use \ instead of + or << to concatenate two string literals at
                  line end.
-  Enabled: true
+  Enabled: false
   SafeAutoCorrect: false
   VersionAdded: '0.18'
   VersionChanged: '0.64'
@@ -6134,8 +6140,12 @@ Rails/I18nLocaleTexts:
 # value, so the call keeps its signature and block opener on one line.
 require:
   - ./lib/rubocop/cop/layout/multiline_method_argument_line_breaks_except_lambdas
+  - ./lib/rubocop/cop/layout/reject_line_continuation
 
 Layout/MultilineMethodArgumentLineBreaksExceptLambdas:
+  Enabled: true
+
+Layout/RejectLineContinuation:
   Enabled: true
 
 Rails/LexicallyScopedActionFilter:

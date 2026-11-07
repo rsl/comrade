@@ -3,7 +3,7 @@ import { Turbo } from "@hotwired/turbo-rails"
 import { marked } from "marked"
 
 // Streams an SSE reply into the transcript from a plain fetch: events are
-// JSON objects on `data:` lines ({type: "delta"|"tool"|"citations"|"error"}),
+// JSON objects on `data:` lines ({type: "start"|"delta"|"tool"|"citations"|"error"}),
 // `[DONE]` ends the stream. Tool events render as "searched for X" chips
 // ahead of the answer text. Sending while a reply streams aborts it —
 // "steering": the partial answer is persisted as context, and the new
@@ -12,7 +12,7 @@ import { marked } from "marked"
 // names it, later exchanges post to its messages endpoint, and the first
 // completed stream visits the conversation's permanent address.
 export default class extends Controller {
-  static targets = ["form", "transcript", "title", "gate", "greeting"]
+  static targets = ["form", "transcript", "title", "gate", "greeting", "webMode", "imageMode"]
   static values = { endpoint: String, fresh: Boolean, keepSimple: Boolean }
 
   // The in-flight request, abortable, and the partial answer text it has
@@ -29,6 +29,32 @@ export default class extends Controller {
   // Auto-scroll follows the stream only while the reader is pinned to the
   // bottom; scrolling up pauses it and raises the "latest" chip.
   autoScroll = true
+  // The foreman's status: one quiet line below the streaming text while the
+  // turn runs — the newest phase with a running clock, pinned to the
+  // answer's growing edge — expandable into the full timestamped log. It
+  // replaces the old live dot as the liveness device, rides events the
+  // wire already sends. Completion keeps it — clock frozen to the
+  // server's total, log swapped for the persisted one — and the server
+  // render is its reload twin; failure and steering still tear it down
+  // (nothing persisted to show).
+  statusEl = null
+  logEl = null
+  turnTimer = null
+  turnT0 = null
+  turnPhase = "thinking"
+  turnLaneLabel = ""
+  turnLog = []
+  sawToken = false
+  // Footer suppression: once the accumulated partial grows a line starting
+  // "Sources:", the visible preview freezes at the footer's onset and the
+  // raw footer text never streams in loud — the completion render rebuilds
+  // from `partial`, so nothing is missed, and prose that merely starts
+  // "Sources:" self-corrects there (the footer regex won't match it).
+  footerSeen = false
+  // The answer-mode switch: which mode this ask rides. Per-turn — it
+  // reverts to all on send, like the composer clearing; a retry replays
+  // the failed turn's mode.
+  imageMode = false
 
   connect() {
     // The transcript panel is the scroll surface (app shell: the document
@@ -44,13 +70,42 @@ export default class extends Controller {
     // shouldn't steal focus (or pop the keyboard accessory bar). The gate
     // holds the composer hidden, so nothing to focus until it's revealed.
     if (this.freshValue && !this.formTarget.classList.contains("hidden")) this.formTarget.elements.content.focus()
+    this.fitPlaceholder()
     this.element.insertAdjacentHTML("beforeend",
       '<button type="button" data-action="stream-reader#jumpToLatest" class="jump-latest fixed bottom-28 right-64 z-20 hidden cursor-pointer rounded-full bg-soviet/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-soviet/60">↓ latest</button>')
+  }
+
+  // The full greeting doesn't fit one line beside the mode switch at
+  // phone widths — a wrapped placeholder clips inside the one-row
+  // textarea. Measured, not a breakpoint: the A− text-scale steps and
+  // odd viewports all change the budget. Swaps to the short form (the
+  // view carries it as data-short-placeholder, only where a swap makes
+  // sense) when the current placeholder would wrap. One-way: rotating
+  // wide again keeps the short form.
+  fitPlaceholder() {
+    const field = this.formTarget.elements.content
+    const short = field.dataset.shortPlaceholder
+    if (!short || field.placeholder === short) return
+    // A gated page connects with the form still hidden: clientWidth is 0
+    // and everything "overflows". Only judge once the form is rendered —
+    // the gate's reveal calls back in.
+    if (field.clientWidth === 0) return
+    const probe = document.createElement("span")
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:" + getComputedStyle(field).font
+    probe.textContent = field.placeholder
+    document.body.appendChild(probe)
+    const style = getComputedStyle(field)
+    // clientWidth includes the field's padding; the text budget doesn't.
+    const budget = field.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+    const overflows = probe.getBoundingClientRect().width > budget
+    probe.remove()
+    if (overflows) field.placeholder = short
   }
 
   disconnect() {
     this.transcriptTarget.removeEventListener("scroll", this.onScroll)
     this.element.querySelector(".jump-latest")?.remove()
+    this.stopTurnStatus()
   }
 
   updateAutoScroll() {
@@ -107,6 +162,31 @@ export default class extends Controller {
     input.setSelectionRange(input.value.length, input.value.length)
   }
 
+  // The answer-mode switch: all is the default; images swaps web search
+  // off the wire for the turn. The active segment reads as part of the
+  // composer (raised), the inactive one recedes.
+  pickWebMode() {
+    this.imageMode = false
+    this.renderModeSwitch()
+  }
+
+  pickImageMode() {
+    this.imageMode = true
+    this.renderModeSwitch()
+  }
+
+  // The active segment is heavier, the inactive one recedes — the bar
+  // behind both stays unified. Class twins of _chat.html.erb's switch.
+  renderModeSwitch() {
+    if (!this.hasWebModeTarget) return
+    this.webModeTarget.className = this.imageMode
+      ? "px-3 text-sm leading-snug text-neutral-500"
+      : "px-3 text-sm leading-snug font-medium text-neutral-900"
+    this.imageModeTarget.className = this.imageMode
+      ? "px-3 text-sm leading-snug font-medium text-neutral-900"
+      : "px-3 text-sm leading-snug text-neutral-500"
+  }
+
   async submit(event) {
     event.preventDefault()
     const input = event.target.elements.content
@@ -116,6 +196,10 @@ export default class extends Controller {
     input.value = ""
     this.syncAskButton()
     this.clearRetries()
+    // The mode rides the ask and reverts — per-turn, like the composer
+    // clearing.
+    const mode = this.imageMode ? "images" : ""
+    this.pickWebMode()
     // Only an in-flight stream can be interrupted. A completed stream also
     // leaves `partial` holding its full text — sending that as `interrupted`
     // makes the server persist the previous answer again as a lead-in row
@@ -128,23 +212,24 @@ export default class extends Controller {
       this.finishStream(this.liveAnswer)
       this.currentRequest.abort()
     } else if (this.currentRequest) {
-      this.clearLiveDots()
       this.currentRequest.abort()
     }
 
     const answer = this.appendExchange(content)
-    await this.stream(content, interrupted, answer, { retry: false })
+    await this.stream(content, interrupted, answer, { retry: false, mode })
   }
 
   // The one reply path: POST, stream into the given assistant turn, and
-  // on any failure leave a retry link bound to the same content.
-  async stream(content, interrupted, answer, { retry }) {
+  // on any failure leave a retry link bound to the same content — same
+  // mode: a failed image turn retries as an image turn.
+  async stream(content, interrupted, answer, { retry, mode }) {
     this.partial = ""
     this.pendingCitations = null
+    this.pendingStats = null
+    this.footerSeen = false
     this.clearOffers()
     const request = this.currentRequest = new AbortController()
     this.liveAnswer = answer
-    this.showLiveDot(answer)
     this.syncAskButton()
     let completed
 
@@ -153,17 +238,17 @@ export default class extends Controller {
       response = await fetch(this.endpointValue, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ content, interrupted, retry }),
+        body: JSON.stringify({ content, interrupted, retry, mode }),
         signal: this.currentRequest.signal,
       })
     } catch (error) {
       if (error.name === "AbortError") return
-      this.showRetry(content, interrupted, answer)
+      this.showRetry(content, interrupted, answer, null, mode)
       return
     }
 
     if (!response.ok) {
-      this.showRetry(content, interrupted, answer)
+      this.showRetry(content, interrupted, answer, null, mode)
       return
     }
 
@@ -175,16 +260,20 @@ export default class extends Controller {
       this.endpointValue = `${this.conversationUrl}/messages`
     }
 
+    this.startTurnStatus(answer)
     try {
       completed = await this.readStream(response.body, answer, content, interrupted)
     } catch (error) {
       // A steered-away stream dies intentionally; its partial answer
       // stays on the page and in the transcript via the next request.
-      if (error.name !== "AbortError") this.showRetry(content, interrupted, answer)
+      if (error.name !== "AbortError") this.showRetry(content, interrupted, answer, null, mode)
       return
     } finally {
       if (this.currentRequest === request) this.currentRequest = null
       this.syncAskButton()
+      // Completion keeps the status line (the reload twin renders it);
+      // failure and steering tear it down.
+      if (!completed) this.stopTurnStatus()
     }
     // Only the index page visits on completion: the first exchange (or,
     // when steered, the exchange that carries the interruption) ends with
@@ -199,9 +288,8 @@ export default class extends Controller {
   // the retry request skips user persistence and carries whatever partial
   // answer had streamed as interruption context. The reason, when the
   // server sent one, names the upstream failure.
-  showRetry(content, interrupted, answer, reason) {
-    this.clearLiveDots()
-    this.failed = { content, interrupted }
+  showRetry(content, interrupted, answer, reason, mode) {
+    this.failed = { content, interrupted, mode }
 
     const line = document.createElement("p")
     line.className = "retry-line mt-2 text-xs text-red-400"
@@ -225,19 +313,19 @@ export default class extends Controller {
 
   async retry() {
     this.clearRetries()
-    const { content, interrupted } = this.failed
+    const { content, interrupted, mode } = this.failed
 
     // The retried answer arrives as a fresh assistant turn below the
     // failed one; the user turn is already on the page and in the DB.
     this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
     const turns = this.transcriptTarget.querySelectorAll("article")
     const answer = turns[turns.length - 1]
+    this.contentEl = answer.querySelector("div")
 
-    await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null })
+    await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null, mode })
   }
 
   appendExchange(content) {
-    this.clearLiveDots()
     // First exchange: the greeting goes with your message, not with the
     // reply — the transcript top-aligns from here (empty-state centering
     // is my-auto on the card, which is gone or hidden by now).
@@ -259,23 +347,94 @@ export default class extends Controller {
     // Streamed text renders in final color from the start — no
     // provisional faint pass.
     this.contentEl = answer.querySelector("div")
-    this.showLiveDot(answer)
     return answer
   }
 
-  // The liveness device: a pulsing red dot inline in the COMRADE label —
-  // no node added or removed in the flow, so nothing shifts. Up at stream
-  // start, gone at [DONE], failure, or steering.
-  showLiveDot(answer) {
-    const label = answer.querySelector("p")
-    if (!label.querySelector(".live-dot")) {
-      label.insertAdjacentHTML("beforeend",
-        '<span class="live-dot ml-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-soviet"></span>')
-    }
+  // The foreman's status: a pulsing dot, the newest phase, and a running
+  // clock on one quiet line BELOW the streaming text — pinned to the
+  // answer's growing edge, where the reader is looking. A click expands
+  // the full timestamped log. Up when the stream opens; completion keeps
+  // it (completeTurnStatus), failure and steering tear it down (the
+  // stream call's finally).
+  startTurnStatus(answer) {
+    this.turnT0 = Date.now()
+    this.turnPhase = "thinking"
+    this.turnLaneLabel = ""
+    this.turnLog = []
+    this.sawToken = false
+    // A completed prior turn leaves its log element behind (its status
+    // line survives); the new turn's log starts fresh below its own line.
+    this.logEl = null
+    this.statusEl = document.createElement("p")
+    this.statusEl.className = "turn-status flex cursor-pointer items-center gap-2 text-xs text-neutral-500"
+    // The event is named explicitly: Stimulus's shorthand (identifier#method)
+    // resolves the event from the element's default (a → click, form →
+    // submit, …) and a <p> has none — the action throws "missing event
+    // name" inside the observer and silently never binds.
+    this.statusEl.dataset.action = "click->stream-reader#toggleTurnLog"
+    this.statusEl.innerHTML =
+      '<span class="live-dot inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-soviet"></span>' +
+      '<span class="turn-status-text grow"></span>'
+    this.statusClock = this.statusEl.querySelector(".turn-status-text")
+    // Anchored below the content div: text grows above it, tool rounds
+    // already create each new content div before it, so the status stays
+    // at the answer's growing edge without re-insertion.
+    this.contentEl.after(this.statusEl)
+    this.renderTurnStatus()
+    this.turnTimer = setInterval(() => this.renderTurnStatus(), 1000)
   }
 
-  clearLiveDots() {
-    this.element.querySelectorAll(".live-dot").forEach((el) => { el.remove() })
+  renderTurnStatus() {
+    this.statusClock.textContent =
+      [this.turnLaneLabel, this.turnPhase, this.turnClock(Date.now() - this.turnT0)].filter(Boolean).join(" · ")
+  }
+
+  // The m:ss clock both the status line and the log's stamps read —
+  // client-side against turnT0 while the turn runs, server-side from
+  // total_ms once it's done (byte-identical twins).
+  turnClock(milliseconds) {
+    const seconds = Math.floor(milliseconds / 1000)
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+  }
+
+  // Log entries are stamped against the turn's clock and kept as plain
+  // text — model names, queries and URLs never touch innerHTML.
+  turnStamp(text) {
+    return `${this.turnClock(Date.now() - this.turnT0)} ${text}`
+  }
+
+  appendTurnLog(text) {
+    this.turnLog.push(text)
+    if (!this.logEl) {
+      this.logEl = document.createElement("pre")
+      this.logEl.className = "c-turn-log hidden"
+      this.statusEl.after(this.logEl)
+    }
+    this.logEl.textContent = this.turnLog.join("\n")
+  }
+
+  toggleTurnLog(event) {
+    // The log is found from the clicked line, not an instance field: the
+    // server render's status lines (older turns after a reload) carry the
+    // same action with no controller state behind them.
+    event.currentTarget.closest("article")?.querySelector(".c-turn-log")?.classList.toggle("hidden")
+  }
+
+  // Completion retires the ticking status: renderCitations swaps the whole
+  // block for the merged action line — dot, clickable total, persisted
+  // log. Stopping the timer is all that's left here; failure and steering
+  // tear the line down through stopTurnStatus.
+  completeTurnStatus() {
+    if (this.turnTimer) clearInterval(this.turnTimer)
+    this.turnTimer = null
+  }
+
+  stopTurnStatus() {
+    if (this.turnTimer) clearInterval(this.turnTimer)
+    this.turnTimer = null
+    this.statusEl?.remove()
+    this.statusEl = null
+    this.logEl = null
   }
 
   // "…" while a stream runs, "Ask" the moment there's a draft typed — a
@@ -300,7 +459,6 @@ export default class extends Controller {
   // End-of-stream pass for a steered-away answer: same formatting the
   // [DONE] path would run, on whatever text arrived.
   finishStream(answer) {
-    this.clearLiveDots()
     this.renderCitations(answer)
   }
 
@@ -329,7 +487,9 @@ export default class extends Controller {
       for (const event of events) {
         const data = event.replace(/^data: /, "")
         if (data === "[DONE]") {
-          this.clearLiveDots()
+          // Completion swaps the foreman's status to its persisted form
+          // before the citation render consumes the stats event.
+          this.completeTurnStatus()
           this.renderCitations(answer)
           return true
         }
@@ -338,8 +498,17 @@ export default class extends Controller {
         // reason lands in the retry line; the [DONE] success path never
         // runs, so no citation render and no Turbo visit.
         if (parsed.type === "error") {
-          this.showRetry(content, interrupted, answer, parsed.message)
+          this.showRetry(content, interrupted, answer, parsed.message, mode)
           return false
+        }
+        // The server recognized this retry as an already-answered turn:
+        // the original stream died after persisting its full answer. The
+        // empty retry turn goes, and the stream counts as complete — a
+        // fresh page then visits the true transcript, a show page is
+        // already on it.
+        if (parsed.type === "duplicate") {
+          answer.remove()
+          return true
         }
         if (this.applyEvent(answer, parsed)) sawCitations = true
         this.scrollToBottom()
@@ -349,15 +518,33 @@ export default class extends Controller {
 
   // Returns true when the event carried citations.
   applyEvent(answer, event) {
-    if (event.type === "delta") {
-      // Text is final-color from the first delta; the live dot in the
-      // label is the only "still working" signal.
-      this.contentEl.textContent += event.text
+    if (event.type === "start") {
+      // The foreman's opening entry: which lane the turn rides, the model
+      // on it, the pinned effort when there is one. A lane-less setup has
+      // no lane to name — the model speaks for itself.
+      this.turnLaneLabel = event.lane === "legacy" ? "" : `${event.lane} lane`
+      const parts = [this.turnLaneLabel, event.model, event.effort && `effort ${event.effort}`].filter(Boolean)
+      this.appendTurnLog(this.turnStamp(`turn accepted — ${parts.join(", ")}`))
+      this.renderTurnStatus()
+    } else if (event.type === "delta") {
+      // Text is final-color from the first delta; the status line's clock
+      // is the "still working" signal.
       this.partial += event.text
+      this.showPartialTail()
+      if (!this.sawToken) {
+        this.sawToken = true
+        this.appendTurnLog(this.turnStamp("first token"))
+      }
+      this.turnPhase = "writing"
+      this.renderTurnStatus()
     } else if (event.type === "tool") {
       // The finished run stops accumulating — the answer pass formats
-      // alone. The dot stays: the stream is still working.
+      // alone. The status line keeps ticking: the stream is still working.
       this.partial = ""
+      this.footerSeen = false
+      this.turnPhase = event.name === "fetch_page" ? "fetching" : "searching"
+      this.appendTurnLog(this.turnStamp(this.toolLogLine(event)))
+      this.renderTurnStatus()
       // Chips collect into one group div (matching the server render):
       // the group carries the outer spacing, chips are tight inside it.
       let group = answer.querySelector(".chip-group")
@@ -372,11 +559,49 @@ export default class extends Controller {
       this.contentEl = document.createElement("div")
       this.contentEl.className = "whitespace-pre-wrap leading-relaxed"
       group.after(this.contentEl)
+    } else if (event.type === "images") {
+      // An image_search round's found pictures: a thumbnail strip after
+      // the chip group, ahead of the answer text (the reload twin reads
+      // the row's payload).
+      this.renderImageStrip(answer, event.images)
     } else if (event.type === "citations") {
       this.pendingCitations = event.citations
       return event.citations.length > 0
+    } else if (event.type === "stats") {
+      // The same numbers the server persists on the row — the footer
+      // segment renders from these so the live render and the reload
+      // match byte for byte. The row id rides the event (wire-only, the
+      // jsonb stays clean) so the footer's prompt link can target the row.
+      this.pendingStats = event.stats
     }
     return false
+  }
+
+  // Renders the streaming preview of the accumulated `partial`: what the
+  // completion render will keep, not what it will strip. Inline [n]
+  // markers vanish here the way they resolve into source chips there, and
+  // a trailing "[" or "[1" hides too — markers split across deltas. A
+  // bracket that turns out to be prose pops back at completion. Once the
+  // footer begins (a line starting "Sources:"), the preview freezes at
+  // the footer's onset; later deltas accumulate silently, and the
+  // completion render rebuilds from `partial` so nothing is missed.
+  showPartialTail() {
+    if (this.footerSeen) return
+    const onset = this.partial.search(/(^|\n)Sources:/)
+    if (onset !== -1) {
+      this.footerSeen = true
+      this.contentEl.textContent = this.visibleText(this.partial.slice(0, onset))
+      return
+    }
+    this.contentEl.textContent = this.visibleText(this.partial)
+  }
+
+  visibleText(text) {
+    // Horizontal whitespace only before a marker: this runs on the whole
+    // raw stream, and \s* would eat the \n\n between paragraphs, visually
+    // merging them in the preview. The completion twins run per-paragraph,
+    // where plain \s* is safe.
+    return text.replace(/[^\S\n]*\[\d+\]/g, "").replace(/[^\S\n]*\[\d*\]$/, "")
   }
 
   // End-of-stream formatting: paragraphs split on blank lines, each
@@ -414,11 +639,27 @@ export default class extends Controller {
       return "\n"
     })
 
-    content.innerHTML = body.split(/\n\n+/).map((paragraph) => {
+    // Deep-lane drift fallback (twin of footer_fallback in
+    // conversations_helper.rb): the model declared a footer but resolved
+    // no inline markers — the footer's own declared list becomes a
+    // trailing chip line, resolved and deduped exactly like the
+    // per-paragraph chips.
+    const footerSources = Object.keys(markerSources)
+      .sort((a, b) => a - b)
+      .map((n) => {
+        const cited = markerSources[n]
+        const citation = citations.find((c) => c.url === cited.url)
+        return citation || { url: cited.url, title: cited.title || new URL(cited.url).host }
+      })
+      .filter((source, index, all) => all.findIndex((s) => s.url === source.url) === index)
+
+    let resolved = false
+    const html = body.split(/\n\n+/).map((paragraph) => {
       const urls = []
-      const plain = this.sansSup(this.sansRangeMarkers(paragraph)).replace(/\[(\d+)\]/g, (marker, n) => {
+      const plain = this.sansSup(this.sansRangeMarkers(paragraph)).replace(/\s*\[(\d+)\]/g, (marker, n) => {
         const cited = markerSources[parseInt(n)]
         if (!cited) return marker
+        resolved = true
         const citation = citations.find((c) => c.url === cited.url)
         urls.push(citation || { url: cited.url, title: cited.title || new URL(cited.url).host })
         return ""
@@ -427,12 +668,24 @@ export default class extends Controller {
       const block = marked.parse(escape(plain), { breaks: true })
       return `<div class="mb-3 last:mb-0">${block}</div>${chips}`
     }).join("")
+    if (footerSources.length && !resolved) html += this.sourceChips(footerSources, escape)
+    content.innerHTML = html
+    // Completion merges the foreman into the action line: the status
+    // line and its live log retire, the merged line carries the dot and
+    // the clickable total, and the persisted log sits under it — what a
+    // reload renders. Byte-identical with _message.html.erb.
+    this.statusEl?.remove()
+    this.logEl?.remove()
+    this.statusEl = null
+    this.logEl = null
     if (!citations.length) {
       answer.insertAdjacentHTML("beforeend", this.ownKnowledgeHtml)
     } else {
       answer.insertAdjacentHTML("beforeend", this.breakDownHtml)
     }
+    this.appendTurnLogPre(answer)
     this.pendingCitations = null
+    this.pendingStats = null
   }
 
   // The model sometimes copies the interface's superscript markup into
@@ -445,36 +698,111 @@ export default class extends Controller {
   // single source, so they'd survive the [n] pass as literal text — the
   // leak this strips. Misbehaving models can't bracket-bomb the page.
   sansRangeMarkers(text) {
-    return text.replace(/\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\[\d+\s*[–—-]\s*\d+\]/g, "")
+    return text.replace(/\s*\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\s*\[\d+\s*[–—-]\s*\d+\]/g, "")
   }
 
   sourceChips(sources, escape) {
     if (!sources.length) return ""
-    const links = sources.map((s) =>
-      `<a href="${escape(s.url)}" target="_blank" rel="noopener" class="underline hover:text-neutral-300">${escape(s.title || s.url)}</a>`)
+    const links = sources.map((s) => {
+      const title = `<a href="${escape(s.url)}" target="_blank" rel="noopener" class="underline hover:text-neutral-300">${escape(s.title || s.url)}</a>`
+      const deeper = `<a href="#" data-title="${escape(s.title || "")}" data-url="${escape(s.url)}" data-action="stream-reader#goDeeper" class="go-deeper cursor-pointer underline hover:text-neutral-300">go deeper</a>`
+      return `${title} · ${deeper}`
+    })
     return `<div class="mt-1 mb-4 text-xs text-neutral-500">sources: ${links.join(" · ")}</div>`
   }
 
+  // The foreman's log line for a tool event — the same words the server
+  // writes into the persisted log (tool_log_line in reply.rb).
+  toolLogLine(event) {
+    if (event.name === "web_search") return `searched: ${event.query}`
+    if (event.name === "image_search") return `searched images: ${event.query}`
+    return `fetched: ${event.url}`
+  }
+
   toolChip(event) {
-    const label = event.query ? `searched for ${event.query}` : `fetched ${event.url}`
+    const label =
+      event.name === "image_search" ? `searched images for ${event.query}`
+      : event.query ? `searched for ${event.query}`
+      : `fetched ${event.url}`
     // Chip inside the group (see applyEvent): tight, the group div carries
     // the spacing.
     return `<p class="mb-1 text-xs text-neutral-500">— ${label}</p>`
   }
 
+  // The thumbnail strip an image_search round found: proxied thumbs
+  // (comrade serves the bytes — devices never hit image hosts), tap
+  // opens the full image in the lightbox. Sits after the chip group,
+  // ahead of the answer text; further strips keep row order under it.
+  // Byte-identical with image_strip in conversations_helper.rb.
+  renderImageStrip(answer, images) {
+    const group = answer.querySelector(".chip-group")
+    if (!group || !images?.length) return
+    const strips = answer.querySelectorAll(".image-strip")
+    const anchor = strips.length ? strips[strips.length - 1] : group
+    const strip = document.createElement("template")
+    strip.innerHTML = this.imageStripHtml(images).trim()
+    anchor.after(strip.content.firstChild)
+    this.scrollToBottom()
+  }
+
+  imageStripHtml(images) {
+    const escape = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
+    const buttons = images.map((image) => {
+      const title = escape(image.title)
+      return `<button type="button" class="shrink-0 cursor-pointer" data-action="click->lightbox#open" data-full-url="${escape(image.full)}" data-thumb-url="${escape(image.thumb)}" data-caption="${title}"><img src="${escape(image.thumb)}" alt="${title}" loading="lazy" class="h-24 w-auto rounded"></button>`
+    }).join("")
+    return `<div class="image-strip mt-1 mb-3 flex gap-2 overflow-x-auto">${buttons}</div>`
+  }
+
+  // The provenance segment of the answer's footer line, from the server's
+  // stats event — the same numbers the row persists, so the live render
+  // and the reload match byte for byte. On a fresh completion the total
+  // is the click target that toggles the foreman's log. Byte-identical
+  // with stats_segment in conversations_helper.rb.
+  statsSegment() {
+    const stats = this.pendingStats
+    if (!stats || !stats.total_ms) return ""
+    return ` · <span class="cursor-pointer hover:text-neutral-300" data-action="click->stream-reader#toggleTurnLog">total ${this.statSeconds(stats.total_ms)}</span>`
+  }
+
+  statSeconds(ms) {
+    return `${(ms / 1000).toFixed(1)}s`
+  }
+
+  // The action line's dot: gold marks a completed turn — every completed
+  // turn's line carries one; red pulsing is the working mark, streaming
+  // only. Byte-twin of standing_dot in conversations_helper.rb.
+  get standingDot() {
+    return '<span class="live-dot mr-2 inline-block h-1.5 w-1.5 rounded-full bg-gold"></span>'
+  }
+
+  // The foreman's timestamped log, collapsed under the merged action line
+  // and opened from the total time. The persisted log is the truth; text
+  // only — model names, queries and URLs never touch innerHTML. Byte-twin
+  // of turn_log_pre in conversations_helper.rb.
+  appendTurnLogPre(answer) {
+    const stats = this.pendingStats
+    if (!stats?.log) return
+    const pre = document.createElement("pre")
+    pre.className = "c-turn-log hidden"
+    pre.textContent = stats.log.join("\n")
+    answer.insertAdjacentElement("beforeend", pre)
+  }
+
   get ownKnowledgeHtml() {
     // Must stay byte-identical with _message.html.erb's double_check footer:
     // the post-first-reply Turbo.visit swaps one for the other.
-    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">From model knowledge<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Double check</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
+    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.standingDot + 'From model knowledge' + this.statsSegment() + '<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Check sources</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }
 
   // The action line on a search answer — chips carry the sources, the
-  // line carries the action. Byte-identical with _message.html.erb's
-  // break_down branch.
+  // line names them (From sources) and carries the action. Byte-identical
+  // with _message.html.erb's break_down branch.
   get breakDownHtml() {
-    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500"><a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
+    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.standingDot + 'From sources' + this.statsSegment() + ' · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }
@@ -496,7 +824,8 @@ export default class extends Controller {
     this.gateTarget.hidden = true
     this.greetingTarget.hidden = false
     this.formTarget.classList.remove("hidden")
-    document.querySelector("[data-gate-sidebar]")?.classList.remove("hidden")
+    this.fitPlaceholder()
+    document.querySelectorAll("[data-gate-sidebar]").forEach((el) => el.classList.remove("hidden"))
     // The ☰ carries the same gated-hidden as its sidebar and rides along.
     document.querySelector("[data-sidebar-drawer-target='toggle']")?.classList.remove("hidden")
     this.formTarget.elements.content.focus()
@@ -530,6 +859,22 @@ export default class extends Controller {
   // shows them on the latest answer only.
   clearOffers() {
     this.element.querySelectorAll(".double-check-offer, .break-down-offer, .keep-simple-offer").forEach((el) => { el.remove() })
+  }
+
+  // The per-source chip offer: submit a canned depth turn naming that one
+  // source through the composer path, so it behaves exactly like typed
+  // text ("go deeper on…" also trips the server's depth mode). Same
+  // refusals as doubleCheck — streaming would steer, a draft must not be
+  // clobbered.
+  goDeeper(event) {
+    event.preventDefault()
+    const chip = event.target.closest("a.go-deeper")
+    const input = this.formTarget.elements.content
+    if (!chip || this.currentRequest || input.value.trim()) return
+    const title = chip.dataset.title && chip.dataset.title.trim()
+    const source = title ? `${title} (${chip.dataset.url})` : chip.dataset.url
+    input.value = `go deeper on this source — ${source} — what does it actually support, and what did the answer leave out?`
+    this.formTarget.requestSubmit()
   }
 
   scrollToBottom() {

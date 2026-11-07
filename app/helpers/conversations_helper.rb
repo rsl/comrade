@@ -7,8 +7,72 @@ module ConversationsHelper
     render 'chat', endpoint:, fresh:, conversation:, messages:
   end
 
-  def message_turn(message, tool_notes:, double_check:, break_down:)
-    render 'message', message:, tool_notes:, double_check:, break_down:
+  # The provenance segment of the answer's footer line: the turn's total
+  # time — from the row's stats jsonb. On the latest stats answer it is
+  # the click target that toggles the foreman's log; on older answers
+  # plain text. Empty when the row carries no stats (steered partials,
+  # older answers without). Byte-identical with the stream reader's
+  # statsSegment; the post-first-reply Turbo.visit swaps one for the other.
+  def stats_segment(message, clickable: false)
+    stats = message.stats
+    return '' if stats.blank? || stats['total_ms'].blank?
+
+    total = "total #{ stat_seconds(stats['total_ms']) }"
+    inner =
+      if clickable
+        tag.span(
+          total,
+          class: 'cursor-pointer hover:text-neutral-300',
+          data: { action: 'click->stream-reader#toggleTurnLog' },
+        )
+      else
+        total
+      end
+    safe_join([' · ', inner])
+  end
+
+  def stat_seconds(milliseconds)
+    "#{ (milliseconds.to_f / 1000).round(1) }s"
+  end
+
+  # The id of the conversation's most recent answer carrying stats — the
+  # only turn whose foreman's log rides the action line. Steered partials
+  # persist stats-less, so it lands on the last completed answer.
+  def turn_status_id(messages)
+    messages.reverse.detect { |turn| turn.role == 'assistant' && turn.stats.present? }&.id
+  end
+
+  # The action line's dot: gold marks a completed turn, and every
+  # completed turn's line carries one — red pulsing stays the working
+  # mark (streaming only). Byte-twin of the stream reader's completion
+  # markup.
+  def standing_dot
+    tag.span(class: 'live-dot mr-2 inline-block h-1.5 w-1.5 rounded-full bg-gold')
+  end
+
+  # The foreman's timestamped log, collapsed under the merged action line
+  # and opened from the total time. Empty when the turn kept no log.
+  # Byte-twin of the stream reader's appendTurnLogPre.
+  def turn_log_pre(message)
+    return '' if message.stats['log'].blank?
+
+    # Styling is the c-turn-log component class (application.css); `hidden`
+    # is the collapsed state. Byte-twin of the stream reader's
+    # appendTurnLogPre — same element, same classes, both renders.
+    tag.pre(message.stats['log'].join("\n"), class: 'c-turn-log hidden')
+  end
+
+  # The archive row's label: the conversation's whole first line — the
+  # prompt as asked, not the 50-char title. First non-blank line of the
+  # first user turn; the title stands in when the row has none.
+  def archive_line(conversation)
+    content = conversation.messages.where(role: 'user').order(:id).pick(:content)
+    line = content.to_s.lines.map(&:strip).detect(&:present?)
+    line.presence || conversation.title.presence || '(Untitled)'
+  end
+
+  def message_turn(message, tool_notes:, double_check:, break_down:, turn_log: false)
+    render 'message', message:, tool_notes:, double_check:, break_down:, turn_log:
   end
 
   # The id of the conversation's most recent memory answer - the only turn
@@ -29,6 +93,28 @@ module ConversationsHelper
   # answers too: density isn't a memory-answer disease.
   def break_down_id(messages)
     messages.reverse.detect { |turn| turn.role == 'assistant' && turn.content.present? }&.id
+  end
+
+  # The conversation listings' buckets, in encounter order over the
+  # created_at-desc list: Today, Yesterday, then Monday-anchored weeks
+  # ("Week of Oct 26" — the current week included; only Today and
+  # Yesterday get named). When the reader asked is the grouping the page
+  # shows.
+  def time_groups(conversations)
+    groups = {}
+    conversations.each do |conversation|
+      label = time_bucket(conversation.created_at.to_date)
+      (groups[label] ||= []) << conversation
+    end
+    groups
+  end
+
+  def time_bucket(date)
+    today = Date.current
+    return 'Today' if date == today
+    return 'Yesterday' if date == today - 1
+
+    "Week of #{ date.beginning_of_week.strftime('%b %-d') }"
   end
 
   # One transcript turn: a message plus the tool chips that answer into
@@ -59,123 +145,40 @@ module ConversationsHelper
 
   # The quiet chip text for a tool row: what comrade did, in prose.
   def tool_note(tool)
-    if tool.tool_name == 'web_search'
-      "searched for #{ tool.tool_payload['arguments']['query'] }"
-    else
-      "fetched #{ tool.tool_payload['arguments']['url'] }"
+    case tool.tool_name
+    when 'web_search' then "searched for #{ tool.tool_payload['arguments']['query'] }"
+    when 'image_search' then "searched images for #{ tool.tool_payload['arguments']['query'] }"
+    else "fetched #{ tool.tool_payload['arguments']['url'] }"
     end
   end
 
-  # Answer paragraphs with per-paragraph source chips. Inline [n] markers
-  # never render: combined with the model's "Sources:" footer they are the
-  # paragraph→source signal, consumed and stripped. A paragraph with no
-  # resolvable markers renders bare; the footer itself never renders.
-  # Paragraph text is markdown — the model writes markdown — rendered by
-  # commonmarker. Raw HTML in the source is escaped by default (no :unsafe),
-  # so model output can only produce markdown constructs, never live markup.
-  def cited_paragraphs(message)
-    citations = message.citations || []
-    body, marker_urls = footer_map(message.content)
-    paragraphs = body.split(/\n\n+/).map do |paragraph|
-      render_answer_paragraph(paragraph, citations, marker_urls)
-    end
-    safe_join(paragraphs)
+  # The thumbnail strip an image_search row found: proxied thumbs
+  # (comrade serves the bytes), tap opens the full image in the
+  # lightbox. Sits under the turn's chips, ahead of the answer. The raw
+  # source urls live on the row's payload; the proxy derives both
+  # addresses.
+  def image_strip(tool)
+    buttons = tool.tool_payload['images'].to_a.map { |image| strip_button(image) }
+    # rubocop:disable-next Rails/OutputSafety — strip_button escapes every
+    # interpolated piece; the wrapper literals are static.
+    %Q(<div class="image-strip mt-1 mb-3 flex gap-2 overflow-x-auto">#{ buttons.join }</div>).html_safe
   end
 
-  # One answer paragraph: source chips resolved from its [n] markers,
-  # text markdown-rendered beneath them.
-  def render_answer_paragraph(paragraph, citations, marker_urls)
-    plain, urls = paragraph_sources(paragraph, citations, marker_urls)
-    block = Commonmarker.to_html(sans_marker_ranges(sans_sup_tags(plain))).strip
-    chips = content_tag(:div, source_chips(urls), class: 'mt-1 mb-4 text-xs text-neutral-500') if urls.any?
-    # rubocop:disable-next Rails/OutputSafety
-    content_tag(:div, block.html_safe, class: 'mb-3 last:mb-0') + chips
-  end
-
-  # Strips [n] markers from a paragraph and collects the source hashes
-  # they resolve to — canonical citations where the url matches, bare
-  # url/title pairs when the model cited something outside the list.
-  # :reek:TooManyStatements — the gsub block is one coherent scan.
-  def paragraph_sources(paragraph, citations, marker_urls)
-    sources = []
-    plain = paragraph.gsub(/\[(\d+)\]/) do
-      # The block's return value is the replacement text: each marker
-      # vanishes from the rendered paragraph, and only its source hash
-      # (collected above, when it resolves) survives into the chips.
-      cited = marker_urls[Regexp.last_match(1).to_i]
-      sources << source_for(cited, citations) if cited
-      ''
-    end
-    [sans_marker_ranges(sans_sup_tags(plain)), sources.uniq { |source| source['url'] }]
-  end
-
-  # jsonb row data — string keys are the storage contract.
-  def source_for(cited, citations)
-    known = citations.detect { |citation| citation['url'] == cited['url'] }
-    return known if known
-
-    # rubocop:disable-next Style/StringHashKeys
-    { 'url' => cited['url'],
-      'title' => cited['title'] || URI.parse(cited['url']).host, }
-  end
-
-  # Inline source chips: title-only links, quiet, one per source.
-  def source_chips(sources)
-    return ''.html_safe if sources.blank?
-
-    links = sources.map do |source|
-      link_to(source['title'] || source['url'],
-        source['url'],
-        target: '_blank',
-        rel: 'noopener',
-        class: 'underline hover:text-neutral-300',)
-    end
-    safe_join(['sources: '.html_safe, safe_join(links, ' · ')])
-  end
-
-  # The model sometimes copies the interface's superscript markup into
-  # its own text; it renders as escaped noise, so it goes.
-  def sans_sup_tags(text)
-    text.gsub(%r{</?sup[^>]*>}, '')
-  end
-
-  # Range-shaped citation markers ("[1–5]", "[1]–[3]") resolve to no
-  # single source, so they'd survive the [n] strip as literal text.
-  # Mirrors sansRangeMarkers in stream_reader_controller.js.
-  def sans_marker_ranges(text)
-    text.gsub(/\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\[\d+\s*[–—-]\s*\d+\]/, '')
-  end
-
-  # Splits the model's trailing "Sources:" footer off the answer and
-  # returns the body plus a { marker number => { url:, title: } } map —
-  # the model writes titles into the footer, and they beat bare hosts
-  # when the cited url isn't in the canonical citations list.
-  def footer_map(content)
-    map = {}
-    body = content.to_s.sub(/\n?Sources?:\n((?:\s*\[\d+\][^\n]*\n?)+)\s*\z/) do
-      parse_footer_lines(Regexp.last_match(1), map)
-      "\n"
-    end
-    [body, map]
-  end
-
-  def parse_footer_lines(footer_block, map)
-    footer_block.each_line do |line|
-      number, text = line.match(/^\s*\[(\d+)\]\s*(.+)$/)&.captures
-      next unless number && (url = text&.match(%r{https?://\S+})&.to_s)
-
-      # jsonb row data — string keys are the storage contract.
-      title = text.sub(url, '').strip.sub(/[—–-]\s*\z/, '').strip
-      # rubocop:disable-next Style/StringHashKeys
-      map[number.to_i] = { 'url' => url, 'title' => title.presence }
-    end
-  end
-
-  # :reek:NilCheck — a nil index is the signal: the marker stays as written.
-  def marker_index(marker, citations, marker_urls)
-    url = marker_urls.dig(marker, 'url')
-    return citations.index { |citation| citation['url'] == url }&.next if url
-
-    marker if marker.between?(1, citations.size)
+  # One thumbnail button, built as raw markup so the render stays
+  # byte-identical with the stream reader's imageStripHtml — the
+  # post-first-reply Turbo.visit swaps one for the other. Attributes are
+  # hand-escaped: titles are model-adjacent text, never trusted.
+  # data-thumb-url rides for the lightbox's fallback: when the full-size
+  # source can't be served, the known-good thumbnail shows instead.
+  def strip_button(image)
+    title = html_escape(image['title'].to_s)
+    full = html_escape(Comrade::ImageProxy.url_for(image['src']))
+    thumb = html_escape(Comrade::ImageProxy.url_for(image['thumbnail']))
+    [
+      '<button type="button" class="shrink-0 cursor-pointer" data-action="click->lightbox#open" ',
+      %Q(data-full-url="#{ full }" data-thumb-url="#{ thumb }" data-caption="#{ title }">),
+      %Q(<img src="#{ thumb }" alt="#{ title }" loading="lazy" class="h-24 w-auto rounded">),
+      '</button>',
+    ].join
   end
 end

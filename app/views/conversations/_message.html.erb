@@ -20,22 +20,37 @@
           <p class="mb-1 text-xs text-neutral-500">— <%= tool_note(note) %></p>
         <% end %>
       </div>
+      <%# Image-search rows grow a thumbnail strip under the chips — the
+          stream render builds it from the images event, this one from the
+          row's payload. Byte-identical twins. %>
+      <% tool_notes.select { |tool| tool.tool_payload['images'].present? }.each do |tool| %>
+        <%= image_strip(tool) %>
+      <% end %>
     <% end %>
     <% if message.role == 'assistant' %>
       <div class="leading-relaxed"><%= cited_paragraphs(message) %></div>
     <% else %>
       <div class="leading-relaxed whitespace-pre-wrap"><%= message.content.strip %></div>
     <% end %>
+    <%# The foreman's log rides the action line on the latest stats answer:
+        the total time toggles the log, and the log sits collapsed under
+        the line. The dot marks every completed turn, gold; the clickable
+        total is the latest answer's log affordance. The reload twin of
+        what the stream reader swaps in at completion. %>
     <% if message.role == 'assistant' %>
       <%# The line under the answer: where it came from, and the actions.
           Memory answers name their knowledge; the latest answer alone
           carries the actions (two links would be two guesses at a target).
-          Search answers carry chips per paragraph and only the action line.
+          Search answers carry chips per paragraph and an action line naming
+          their sources.
           Byte-identical with the stream reader's client render. %>
       <% if message.citations.blank? %>
-        <div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">From model knowledge<% if double_check %><span class="double-check-offer"> · <%= link_to 'Double check', '#', data: { action: 'stream-reader#doubleCheck' }, class: 'double-check cursor-pointer underline hover:text-neutral-300' %></span><% end %><% if break_down %><span class="break-down-offer"> · <%= link_to 'Break it down', '#', data: { action: 'stream-reader#breakDown' }, class: 'break-down cursor-pointer underline hover:text-neutral-300' %></span><% end %><% if current_enlistee&.offer_keep_simple? %><span class="keep-simple-offer"> · Simpler by default? <%= link_to 'Yes', calibration_path, data: { turbo_method: :post }, class: 'cursor-pointer underline hover:text-neutral-300' %> <%= link_to 'No thanks', calibration_path, data: { turbo_method: :delete }, class: 'cursor-pointer text-neutral-500 hover:text-neutral-300' %></span><% end %></div>
+        <div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500"><%= standing_dot %>From model knowledge<%= stats_segment(message, clickable: turn_log) %><% if double_check %><span class="double-check-offer"> · <%= link_to 'Check sources', '#', data: { action: 'stream-reader#doubleCheck' }, class: 'double-check cursor-pointer underline hover:text-neutral-300' %></span><% end %><% if break_down %><span class="break-down-offer"> · <%= link_to 'Break it down', '#', data: { action: 'stream-reader#breakDown' }, class: 'break-down cursor-pointer underline hover:text-neutral-300' %></span><% end %><% if current_enlistee&.offer_keep_simple? %><span class="keep-simple-offer"> · Simpler by default? <%= link_to 'Yes', calibration_path, data: { turbo_method: :post }, class: 'cursor-pointer underline hover:text-neutral-300' %> <%= link_to 'No thanks', calibration_path, data: { turbo_method: :delete }, class: 'cursor-pointer text-neutral-500 hover:text-neutral-300' %></span><% end %></div>
       <% elsif break_down %>
-        <div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500"><%= link_to 'Break it down', '#', data: { action: 'stream-reader#breakDown' }, class: 'break-down cursor-pointer underline hover:text-neutral-300' %><% if current_enlistee&.offer_keep_simple? %><span class="keep-simple-offer"> · Simpler by default? <%= link_to 'Yes', calibration_path, data: { turbo_method: :post }, class: 'cursor-pointer underline hover:text-neutral-300' %> <%= link_to 'No thanks', calibration_path, data: { turbo_method: :delete }, class: 'cursor-pointer text-neutral-500 hover:text-neutral-300' %></span><% end %></div>
+        <div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500"><%= standing_dot %>From sources<%= stats_segment(message, clickable: turn_log) %> · <%= link_to 'Break it down', '#', data: { action: 'stream-reader#breakDown' }, class: 'break-down cursor-pointer underline hover:text-neutral-300' %><% if current_enlistee&.offer_keep_simple? %><span class="keep-simple-offer"> · Simpler by default? <%= link_to 'Yes', calibration_path, data: { turbo_method: :post }, class: 'cursor-pointer underline hover:text-neutral-300' %> <%= link_to 'No thanks', calibration_path, data: { turbo_method: :delete }, class: 'cursor-pointer text-neutral-500 hover:text-neutral-300' %></span><% end %></div>
+      <% end %>
+      <% if turn_log %>
+        <%= turn_log_pre(message) %>
       <% end %>
     <% end %>
   <% end %>

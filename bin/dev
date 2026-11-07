@@ -92,8 +92,8 @@ def kill_squatter(holder)
   return if holder_pid.zero? || holder_pid == pid(PIDFILE)
 
   command = `ps -p #{ holder_pid } -o command=`.strip
-  message = "port #{ dev_port } is held by a foreign process (pid #{ holder_pid }: #{ command }) — not touching it; " \
-            'pick another COMRADE_PORT or kill it yourself'
+  message = "port #{ dev_port } is held by a foreign process (pid #{ holder_pid }: #{ command }) — not touching it; "
+  message << 'pick another COMRADE_PORT or kill it yourself'
   abort message unless command.match?(/comrade/i)
 
   kill_group_first(holder_pid)

@@ -49,8 +49,12 @@ class Conversation < ApplicationRecord
   # conversation order, shaped per the OpenAI chat format. Assistant rows
   # that requested tools carry their tool_calls in tool_payload; tool rows
   # carry their result as content and their call id in tool_payload.
-  def to_transcript
-    messages.map do |message|
+  # `before:` scopes the transcript to rows earlier than the given row —
+  # what a turn's request rode (everything the model had when it wrote
+  # that answer, tool frames of the turn included).
+  def to_transcript(before: nil)
+    rows = before ? messages.where(id: ...before.id) : messages
+    rows.map do |message|
       if message.role == 'assistant' && message.tool_payload&.key?('tool_calls')
         { role: 'assistant', content: message.content, tool_calls: message.tool_payload['tool_calls'] }
       elsif message.role == 'tool'

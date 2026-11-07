@@ -1,0 +1,7 @@
+<%# The prompt inspector: the wire request an answer's turn rode, rebuilt from the transcript plus the current prompt file and prefs. A reconstruction, not a snapshot — the note says so. %>
+<section class="mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10 pt-10">
+  <h2 class="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">The turn's request</h2>
+  <p class="mb-4 text-xs text-neutral-500">Rebuilt from the transcript with the current prompt file and prefs — a reconstruction, not a stored snapshot of the turn.</p>
+  <pre class="whitespace-pre-wrap text-xs leading-relaxed text-neutral-400"><%= JSON.pretty_generate(@request) %></pre>
+  <%= link_to '← back', conversation_path(@conversation), class: 'mt-4 inline-block text-xs text-neutral-500 hover:text-neutral-300' %>
+</section>
