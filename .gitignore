@@ -44,3 +44,11 @@
 /config/comrade_prompt.custom.md
 /app/assets/builds/*
 !/app/assets/builds/.keep
+
+# Session handoffs: ephemeral working state, not source. Born untracked,
+# archived locally by the successor, expired by `agency notes expire`. The
+# durable record lives in roadmap.md and docs/ — a handoff never needed a
+# commit, and committing one puts a bookkeeping commit on whatever branch
+# the close-out runs on (main included, where commits are forbidden).
+.agent-notes/sessions/
+.agent-notes/archive/
