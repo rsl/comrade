@@ -20,9 +20,11 @@ module CurrentEnlistee
   # longest expiry browsers honor (Chrome caps there); server-set and
   # httpOnly, so Safari's script-cookie caps don't apply.
   def enlist_as(enlistee)
-    cookies[TOKEN_COOKIE] = { value: enlistee.token,
-expires: 400.days,
-      httponly: true, }
+    cookies[TOKEN_COOKIE] = {
+      value: enlistee.token,
+      expires: 400.days,
+      httponly: true,
+    }
     @current_enlistee = enlistee
   end
 

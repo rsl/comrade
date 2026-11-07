@@ -85,8 +85,10 @@ module SourcesHelper
     return known if known
 
     # rubocop:disable-next Style/StringHashKeys
-    { 'url' => cited['url'],
-      'title' => cited['title'] || URI.parse(cited['url']).host, }
+    {
+      'url' => cited['url'],
+      'title' => cited['title'] || URI.parse(cited['url']).host,
+    }
   end
 
   # Inline source chips: title-only links, quiet, one per source. Each
@@ -97,16 +99,20 @@ module SourcesHelper
     return ''.html_safe if sources.blank?
 
     links = sources.map do |source|
-      title = link_to(source['title'] || source['url'],
+      title = link_to(
+        source['title'] || source['url'],
         source['url'],
         target: '_blank',
         rel: 'noopener',
-        class: 'underline hover:text-neutral-300',)
-      deeper = link_to('go deeper',
+        class: 'underline hover:text-neutral-300',
+      )
+      deeper = link_to(
+        'go deeper',
         '#',
         data: { title: source['title'], url: source['url'] },
         data_action: 'stream-reader#goDeeper',
-        class: 'go-deeper cursor-pointer underline hover:text-neutral-300',)
+        class: 'go-deeper cursor-pointer underline hover:text-neutral-300',
+      )
       safe_join([title, deeper], ' · ')
     end
     safe_join(['sources: '.html_safe, safe_join(links, ' · ')])

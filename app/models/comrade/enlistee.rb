@@ -50,8 +50,10 @@ module Comrade
     def accept_keep_simple!
       # jsonb row data — string keys are the storage contract.
       # rubocop:disable-next Style/StringHashKeys
-      update!(prefs: (prefs || {}).merge('keep_simple' => KEEP_SIMPLE_LINE),
-        calibration: (calibration || {}).merge('break_down' => 0, 'break_down_nudged' => true),)
+      update!(
+        prefs: (prefs || {}).merge('keep_simple' => KEEP_SIMPLE_LINE),
+        calibration: (calibration || {}).merge('break_down' => 0, 'break_down_nudged' => true),
+      )
     end
 
     def decline_keep_simple!
