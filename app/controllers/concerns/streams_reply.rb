@@ -37,10 +37,7 @@ module StreamsReply
     reply = if ActiveModel::Type::Boolean.new.cast(params[:retry])
       retry_reply(conversation, content, mode)
     else
-      Comrade::Reply.call(conversation: conversation,
-        content: content,
-        interrupted: params[:interrupted],
-        mode: mode,)
+      Comrade::Reply.call(**reply_options(conversation, content, mode))
     end
     self.response_body = reply_enumerator(reply)
   end
@@ -58,20 +55,18 @@ module StreamsReply
   #     and a fresh page visits the true transcript;
   #   - stored, unanswered (only tool rows behind it): the genuine retry —
   #     call_retry, user persistence skipped.
+  def reply_options(conversation, content, mode)
+    { conversation: conversation, content: content, interrupted: params[:interrupted], mode: mode }
+  end
+
   def retry_reply(conversation, content, mode)
     case retry_case(conversation, content)
     when :missing
-      Comrade::Reply.call(conversation: conversation,
-        content: content,
-        interrupted: params[:interrupted],
-        mode: mode,)
+      Comrade::Reply.call(**reply_options(conversation, content, mode))
     when :answered
       duplicate_stream
     else
-      Comrade::Reply.call_retry(conversation: conversation,
-        content: content,
-        interrupted: params[:interrupted],
-        mode: mode,)
+      Comrade::Reply.call_retry(**reply_options(conversation, content, mode))
     end
   end
 
