@@ -43,10 +43,16 @@ citations. AGPL-3.0. Personal tool, built public-first.
 
 ## Session docs
 
-Notes, handoffs, and review guides live in `.agent-notes/sessions/`, named
-`YYYY-MM-DD-<slug>.md` — see that directory's README for the lifecycle.
-Open items get promoted to the registry before going idle; a session never
-archives its own handoff.
+Session handoffs follow the handoff skill; state lives in
+`.agent-notes/handoff.md` (gitignored, overwritten at close-out). The
+open-items registry is `.agent-notes/roadmap.md`. Notes tracking — the
+durable layer (root notes, `plans/`, `research/`) is tracked;
+`handoff.md`, `sessions/`, `archive/`, and `roadmap.md` are gitignored.
+
+Archived handoffs, session notes, and review guides live in
+`.agent-notes/sessions/`, named `YYYY-MM-DD-<slug>.md` — see that
+directory's README for the lifecycle. Open items get promoted to the
+registry before going idle; a session never archives its own handoff.
 
 ## Session docs are untracked working state
 
