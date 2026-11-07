@@ -15,6 +15,8 @@ module Comrade
   # The system prompt is config, never a row: the shipped voice lives in
   # config/comrade_prompt.md, and a personal comrade_prompt.custom.md
   # (gitignored) overrides it wholesale.
+  # rubocop:disable-next Metrics/ClassLength — the reply loop plus its tool
+  # registry and lanes; splitting it scatters one turn's story.
   class Reply
     DEFAULT_PROMPT = Rails.root.join('config/comrade_prompt.md')
     CUSTOM_PROMPT = Rails.root.join('config/comrade_prompt.custom.md')
@@ -83,19 +85,42 @@ module Comrade
       },
     ].freeze
 
+    # The escape hatch for attachments: the wire carries staged copies
+    # (downsampled past ~1280px), so when text in one is illegible the
+    # model calls read_image and the tool round delivers that image's
+    # full-resolution copy. Offered only when the turn's user row
+    # carries attachments.
+    READ_IMAGE_DEFINITION = {
+      type: 'function',
+      function: {
+        name: 'read_image',
+        description: <<~TEXT,
+          View one of the reader's attached images at full resolution. Attachments ride the conversation downscaled; call this when text or fine detail in one is illegible.
+        TEXT
+        parameters: {
+          type: 'object',
+          properties: { key: { type: 'string', description: "The attachment's key, from the [attachments] note" } },
+          required: ['key'],
+        },
+      },
+    }.freeze
+
     # Image mode's tool set: the image tool and page fetch stay, web
     # search goes — the switch means what it says.
     IMAGE_DEFINITIONS = DEFINITIONS.reject { |definition| definition.dig(:function, :name) == 'web_search' }.freeze
 
-    def self.call(conversation:, content:, interrupted: nil, mode: nil)
+    def self.call(conversation:, content:, images: [], interrupted: nil, mode: nil)
+      refs = images.map { |image| ImageStore.store(image) } if images.present?
       reply = new(conversation: conversation, content: content, mode: mode)
       persist_lead_in(reply, conversation, interrupted)
-      reply.append_message(role: 'user', content: content)
+      reply.append_message(role: 'user', content: content, images: refs.presence)
       reply.enumerator
     end
 
     # A retried reply: the user message persisted with the failed attempt,
-    # so only the lead-in (steered partial, resurrection) applies.
+    # so only the lead-in (steered partial, resurrection) applies. The
+    # re-sent staging payload never reaches here — call_retry is entered
+    # without images (refs live on the row).
     def self.call_retry(conversation:, content:, interrupted: nil, mode: nil)
       reply = new(conversation: conversation, content: content, mode: mode)
       persist_lead_in(reply, conversation, interrupted)
@@ -166,14 +191,15 @@ module Comrade
         effort: effort,
         transcript: @conversation.to_transcript(before: upto),
         system_lines: lines,
-        tools: turn_tools_for(mode),
+        tools: turn_tools_for(mode, upto),
       )
     end
 
     # The tools a reconstructed turn rode: image mode's set when its
-    # stats say so, the full set otherwise.
-    def turn_tools_for(mode)
-      mode == 'images' ? IMAGE_DEFINITIONS : DEFINITIONS
+    # stats say so, the full set otherwise — plus the escape hatch when
+    # the turn's user row carried attachments.
+    def turn_tools_for(mode, upto)
+      tools_with_escape_hatch(base_tools(mode), turn_user_row(upto))
     end
 
     private
@@ -314,18 +340,31 @@ module Comrade
     # images: x" / "fetched: y").
     def tool_log_line(name, arguments)
       case name
-      when 'web_search' then "searched: #{ arguments['query'] }"
-      when 'image_search' then "searched images: #{ arguments['query'] }"
-      else "fetched: #{ arguments['url'] }"
+      when 'web_search'
+        "searched: #{ arguments['query'] }"
+      when 'image_search'
+        "searched images: #{ arguments['query'] }"
+      when 'read_image'
+        "read image: #{ arguments['key'] }"
+      else
+        "fetched: #{ arguments['url'] }"
       end
     end
 
+    # rubocop:disable-next Metrics/MethodLength — four one-call arms; the
+    # multi-line case-branch shape doubles what one-liners used to be.
     def dispatch_tool(name, arguments, offset)
       case name
-      when 'web_search' then search_results(arguments['query'], offset)
-      when 'image_search' then image_results(arguments['query'])
-      when 'fetch_page' then fetch_content(arguments['url'], offset)
-      else ["Unknown tool: #{ name }", [], {}]
+      when 'web_search'
+        search_results(arguments['query'], offset)
+      when 'image_search'
+        image_results(arguments['query'])
+      when 'fetch_page'
+        fetch_content(arguments['url'], offset)
+      when 'read_image'
+        read_image_full(arguments['key'])
+      else
+        ["Unknown tool: #{ name }", [], {}]
       end
     end
 
@@ -379,6 +418,23 @@ module Comrade
       end
 
       ["[#{ offset + 1 }] #{ url }\n\n#{ content }", [title: url, url: url], {}]
+    end
+
+    # The model's escape hatch: the named attachment's full-resolution
+    # copy rides the tool row's payload as a ref — bytes stay on disk
+    # until the transcript turns them back into a data URL. Tool-role
+    # image content is not guaranteed across OpenAI-compatible
+    # endpoints (the portability caveat); if the live endpoint rejects
+    # the shape, the fallback is an image-bearing message right after
+    # the tool call.
+    def read_image_full(key)
+      ref = turn_user_row(nil)&.images&.detect do |candidate|
+        candidate['key'] == key || candidate.dig('full', 'key') == key
+      end
+      return ["No attached image has key #{ key } — work from the downscaled copies.", [], {}] unless ref
+
+      full = ref['full'] || ref
+      ["Full-resolution copy of attachment #{ key }.", [], image: full]
     end
 
     def persist_answer(content, citations)
@@ -517,9 +573,25 @@ module Comrade
       request.merge(tools: tool_definitions)
     end
 
-    # The tools on offer this turn: image mode swaps web search out.
+    # The tools on offer this turn: image mode swaps web search out; a
+    # turn whose user row carries attachments adds the full-res escape
+    # hatch. The turn's user row is always the transcript's last one —
+    # both entry points persist (or find) it before streaming starts.
     def turn_tools
-      @mode == 'images' ? IMAGE_DEFINITIONS : DEFINITIONS
+      tools_with_escape_hatch(base_tools(@mode), turn_user_row(nil))
+    end
+
+    def base_tools(mode)
+      mode == 'images' ? IMAGE_DEFINITIONS : DEFINITIONS
+    end
+
+    def turn_user_row(upto)
+      scope = @conversation.messages.where(role: 'user')
+      (upto ? scope.where(id: ...upto.id) : scope).last
+    end
+
+    def tools_with_escape_hatch(base, user_row)
+      user_row&.images.present? ? base + [READ_IMAGE_DEFINITION] : base
     end
 
     # The request body's shape — shared by the live payload and the

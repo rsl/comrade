@@ -7,7 +7,15 @@
       "file": "app/controllers/images_controller.rb",
       "fingerprint": "e0769496e4432dd4ee772d71c9d1d0e116bd2754415e070b0b69fb27e83b5448",
       "note": "The parameter never becomes the filename. It is a signed source url; authorized? rejects anything unsigned before any fetch, and retrieve derives the path from the truncated HMAC of that url - always storage/images/<hex>.<ext>, never a user-controlled string. Brakeman's dataflow sees params reach send_file and cannot see the HMAC wall between them."
+    },
+    {
+      "warning_type": "File Access",
+      "line": 12,
+      "message": "Parameter value used in file name",
+      "file": "app/controllers/uploads_controller.rb",
+      "fingerprint": "a5b92c8f721710a25fb1961df114adb9341b7b18e4effcbe4165bc35981c129f",
+      "note": "The parameter never becomes the filename. ImageStore.serve enforces the SERVE_PATTERN grammar (24-hex key plus allowlisted extension) before any path is built - always storage/uploads/<hex>.<ext>, never a user-controlled string. Same wall the image proxy's ignore documents; Brakeman's dataflow sees params reach send_file and cannot see the grammar check between them."
     }
   ],
-  "updated": "2026-11-07 03:45:00 +0000"
+  "updated": "2026-11-07 12:20:00 +0000"
 }

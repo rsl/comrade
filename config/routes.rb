@@ -33,6 +33,13 @@ Rails.application.routes.draw do
   # (ImageProxy); p carries it.
   get 'img/:key' => 'images#show', as: :image
 
+  # Reader-attached images: served same-origin by content-hash key
+  # (ImageStore) — attached bytes never ride a foreign host, and a
+  # given key's bytes can never change. The constraint lets the
+  # segment keep its extension: Rails would otherwise split the dot
+  # into params[:format] and the filename grammar would fail.
+  get 'uploads/:filename' => 'uploads#show', as: :upload, constraints: { filename: /[0-9a-f]{24}\.[a-z]+/ }
+
   # Identity: one door, singular resource. create enlists or claims (the
   # gate's "stay in the commune" is client-side — no route, no memory),
   # update saves the party line, destroy steps out to the commune.

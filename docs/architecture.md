@@ -29,6 +29,14 @@ commit.
   signature (`/img/<key>?p=<url>`), so devices never talk to image
   hosts and nothing unsigned gets proxied. Fetched copies cache under
   `storage/images/` (no cleanup rule yet).
+- **`Comrade::ImageStore`** — reader-attached images, the proxy
+  pattern pointed inward: staged data URLs are content-hashed to
+  `storage/uploads/<key>.<ext>` and referenced from `messages.images`
+  (jsonb). The ref describes the wire copy (downsampled by the client
+  past ~1280px) with the original nested as `full:` when it differs;
+  the model reaches full-resolution bytes only through the
+  `read_image` tool. Served same-origin by unguessable key at
+  `/uploads/<key>.<ext>`.
 - Tools are plain Ruby objects with `name`, `schema`, and `call(args)`. No
   base class, no registry magic.
 
@@ -37,12 +45,19 @@ commit.
 A `Conversation` has many `Message`s. A message has:
 
 - `role` — a string, not an enum, no STI
-- `content` — text
+- `content` — text (nil is legal on a user row carrying images)
 - `citations` — jsonb
 - `tool_name` — string, set when the message records a tool call
 - `tool_payload` — jsonb, the tool's arguments and result
+- `images` — jsonb, the user turn's attachment refs (ImageStore)
 
 Structured data goes in jsonb columns, not new tables.
+
+## UI
+
+The shell contract — the fixed `inset` shell, visual-viewport sizing,
+the twin-render rule, `c-` component classes — lives in
+`docs/design.md`.
 
 ## Comrades (designed 2026-10-24, not built yet)
 

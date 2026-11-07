@@ -42,6 +42,14 @@
   height: var(--shell-height, 100%);
 }
 
+/* The attachment strip a user turn carries — the staged copies. Shared
+   by the server render (attachment_strip) and the stream reader's
+   attachmentStripHtml; image-strip rides alongside as the structural
+   hook the lightbox navigates by. (2026-11-07) */
+.c-attachment-strip {
+  @apply mt-1 mb-3 flex gap-2 overflow-x-auto;
+}
+
 /* iOS Safari auto-zooms the visual viewport on focus when the focused
    input computes below 16px (its minimum "legible input" size) — the
    zoom pans the fixed shell off-center under the keyboard. The composer
