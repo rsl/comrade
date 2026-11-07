@@ -168,6 +168,14 @@ private conversations enters the household vault only if it has been
 generalized past attribution **and** confirmed by the humans — a
 promotion gate with two keys (session proposes, humans confirm).
 
+**Worked example (from PR #17 review):** a comrade researches drag
+often. The drag pages themselves are anonymous content — `sources/`,
+provenance naming the page, never who fetched them. The fact *about the
+comrade* — that they research this topic often — is per-comrade and
+lives in their vault. Two entries, two layers, by design: the shared
+source never carries the comrade's name, and the vault's interest note
+cites the source by relative path. Neither layer leaks into the other.
+
 **Consumption:** household pages promote into the custom prompt file —
 global by nature, so the commune receives household context too (fine,
 but a choice). Per-comrade pages promote into that comrade's `prefs`
