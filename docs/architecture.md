@@ -89,7 +89,9 @@ Five runtime environment variables, nothing else:
 - `COMRADE_FETCH_API_KEY` — page extraction
 - `COMRADE_SEARCH_URL` — search
 
-Plus two dev-only conveniences, both env-driven and unread in production:
+Plus `COMRADE_TIME_ZONE` — the house zone for date displays and the
+archive page's Today/Yesterday buckets; unset, Eastern Time. And two
+dev-only conveniences, both env-driven and unread in production:
 
 - `COMRADE_PORT` — the port `bin/dev` serves on (maps to `PORT` before
   exec; unset, `PORT`, then Rails' 3000 apply). Exists so a fleet of apps
