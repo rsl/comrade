@@ -23,7 +23,10 @@ citations. AGPL-3.0. Personal tool, built public-first.
   config, set in the operator's env, never in docs. Precedence: `-p`
   flag > ambient `PORT` > Rails' 3000. Dev binds 0.0.0.0 so fleet
   devices reach it. Lifecycle is daemon-only: start/stop/restart through
-  `bin/dev` — killing puma directly orphans the Tailwind watcher.
+  `bin/dev` — killing puma directly orphans the Tailwind watcher. A
+  supervisor process respawns crashed children (web, jobs, tailwind);
+  a child that dies five times running is given up on with a log line
+  — fix the cause and `bin/dev restart`.
 - Env inheritance is a snapshot at process launch: shells spawned by an
   opencode session already carry the operator's exports — re-sourcing is
   only needed when `exports.zsh` gained keys after the parent shell

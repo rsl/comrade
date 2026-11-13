@@ -2,8 +2,11 @@
 # Foreground dev server: bin/dev [server flags] — plain passthrough to
 # `rails server`, with the COMRADE_PORT/PORT mapping below.
 # Background daemon: bin/dev start|stop|restart|status|logs — detached
-# processes (web + GoodJob worker + Tailwind watcher) logging to
-# log/dev-server.log with pids in tmp/pids/{devd,jobsd,tailwind}.pid.
+# processes (supervisor + web + GoodJob worker + Tailwind watcher)
+# logging to log/dev-server.log with pids in
+# tmp/pids/{supervisord,devd,jobsd,tailwind}.pid. The supervisor
+# respawns a crashed child (with backoff accounting — a boot that dies
+# repeatedly gets given up on loudly rather than spun on forever).
 
 require 'socket'
 
@@ -25,9 +28,23 @@ end
 PIDFILE = 'tmp/pids/devd.pid'
 JOBS_PIDFILE = 'tmp/pids/jobsd.pid'
 TAILWIND_PIDFILE = 'tmp/pids/tailwind.pid'
+SUPERVISOR_PIDFILE = 'tmp/pids/supervisord.pid'
 PORTFILE = 'tmp/pids/devd.port'
 LOGFILE = 'log/dev-server.log'
-PROCESSES = { web: PIDFILE, jobs: JOBS_PIDFILE, tailwind: TAILWIND_PIDFILE }.freeze
+# Stop order lives in key order: the supervisor dies first so a stop
+# can't race its respawn of the children being stopped.
+PROCESSES = {
+  supervisor: SUPERVISOR_PIDFILE,
+  web: PIDFILE,
+  jobs: JOBS_PIDFILE,
+  tailwind: TAILWIND_PIDFILE,
+}.freeze
+# Supervision cadence and crash budget: a child that dies this many
+# times consecutively is given up on (logged loudly) instead of spun on
+# forever. The counter resets once a respawn survives 5 minutes.
+CHECK_INTERVAL = 5
+MAX_CONSECUTIVE_CRASHES = 5
+STABILITY_RESET_SECONDS = 300
 
 def pid(pidfile=PIDFILE)
   File.read(pidfile).to_i
@@ -140,8 +157,16 @@ def spawn_web
   spawn_managed(:web, ['./bin/dev'], { 'PORT' => start_port })
 end
 
-def started_message(spawned, jobs, tailwind)
-  detail = "pid #{ spawned }, jobs pid #{ jobs }, tailwind pid #{ tailwind }"
+def spawn_jobs
+  spawn_managed(:jobs, ['./bin/jobs'])
+end
+
+def spawn_supervisor
+  spawn_managed(:supervisor, ['./bin/dev', 'supervise'])
+end
+
+def started_message(supervisor, spawned, jobs, tailwind)
+  detail = "pid #{ spawned }, jobs pid #{ jobs }, tailwind pid #{ tailwind }, supervisor pid #{ supervisor }"
   "comrade dev server on port #{ start_port } (#{ detail }, log #{ LOGFILE })"
 end
 
@@ -159,10 +184,73 @@ def start_server
 
   File.write(PORTFILE, start_port)
   tailwind = spawn_tailwind
-  jobs = spawn_managed(:jobs, ['./bin/jobs'])
+  jobs = spawn_jobs
   spawned = spawn_web
   report_failure unless wait_for_port(15)
-  puts started_message(spawned, jobs, tailwind)
+  supervisor = spawn_supervisor
+  puts started_message(supervisor, spawned, jobs, tailwind)
+end
+
+# The supervision loop: every CHECK_INTERVAL seconds, each managed child
+# whose pidfile is gone or holds a dead pid gets respawned — up to
+# MAX_CONSECUTIVE_CRASHES consecutive deaths, then that child is given
+# up on with a loud log line (a boot that dies on every start — bad
+# branch, port squatter — must not spin). The counter resets when a
+# respawn has stayed up STABILITY_RESET_SECONDS, so a flaky start
+# doesn't spend the budget a real crash would need later. Spawn order
+# matches start_server: tailwind, jobs, web.
+def supervise
+  failures = Hash.new(0)
+  respawned_at = {}
+  loop do
+    sleep CHECK_INTERVAL
+    supervised_children.each { |name, pidfile| check_child(name, pidfile, failures, respawned_at) }
+  rescue StandardError => error
+    puts "supervisor: check failed: #{ error.class }: #{ error.message }"
+  end
+end
+
+def supervised_children
+  PROCESSES.reject { |name, _| name == :supervisor }
+end
+
+def check_child(name, pidfile, failures, respawned_at)
+  return if running?(pidfile)
+
+  reset_failures(name, failures, respawned_at)
+  return if failures[name] > MAX_CONSECUTIVE_CRASHES
+
+  failures[name] += 1
+  give_up_on(name) if failures[name] > MAX_CONSECUTIVE_CRASHES
+  respawn(name, pidfile, failures[name], respawned_at) if failures[name] <= MAX_CONSECUTIVE_CRASHES
+end
+
+# A child left dead past STABILITY_RESET_SECONDS gets its budget back —
+# the slow-retry escape hatch behind the "give up".
+def reset_failures(name, failures, respawned_at)
+  return if respawned_at[name].nil?
+  return if Process.clock_gettime(Process::CLOCK_MONOTONIC) - respawned_at[name] <= STABILITY_RESET_SECONDS
+
+  failures[name] = 0
+end
+
+def give_up_on(name)
+  puts "supervisor: gave up on #{ name } after #{ MAX_CONSECUTIVE_CRASHES } crashes — fix and bin/dev restart"
+end
+
+def respawn(name, pidfile, count, respawned_at)
+  dead_pid = pid(pidfile) || 'gone'
+  puts "supervisor: #{ name } (pid #{ dead_pid }) died — respawn #{ count }/#{ MAX_CONSECUTIVE_CRASHES }"
+  spawn_one(name)
+  respawned_at[name] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+end
+
+def spawn_one(name)
+  case name
+  when :tailwind then spawn_tailwind
+  when :jobs then spawn_jobs
+  when :web then spawn_web
+  end
 end
 
 def terminate_group(current)
@@ -203,8 +291,8 @@ def stop_server
 
   # rubocop:disable-next Rails/IndexWith — bin/dev runs without ActiveSupport;
   # index_with doesn't exist here.
-  stopped = PROCESSES.keys.reverse.to_h { |name| [name, stop_process(PROCESSES[name])] }
-  puts "stopped (#{ stopped.map { |name, process_pid| "#{ name } pid #{ process_pid }" }.join(', ') })"
+  stopped = PROCESSES.keys.to_h { |name| [name, stop_process(PROCESSES[name])] }
+  puts "stopped (#{ stopped.map { |name, process_pid| "#{ name } pid #{ process_pid || 'gone' }" }.join(', ') })"
 end
 
 case ARGV.first
@@ -229,6 +317,10 @@ when 'logs'
   abort "no log at #{ LOGFILE } — never started?" unless File.exist?(LOGFILE)
 
   exec 'tail', '-n', '50', '-f', LOGFILE
+when 'supervise'
+  # Supervisor entry point — spawned by start_server, never run by hand
+  # (a hand-run one fights the managed one over the same pidfiles).
+  supervise
 else
   # Foreground passthrough — flags and bare invocation go to rails server.
   # Bound wide in dev so fleet devices (iPad) reach it via Bonjour; the
