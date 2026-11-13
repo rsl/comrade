@@ -441,9 +441,14 @@ module Comrade
     end
 
     def persist_answer(content, citations)
-      citations = citations.uniq { |citation| citation[:url] }.presence
-      row = append_message(role: 'assistant', content: content, citations: citations, stats: turn_stats)
-      yielder << { type: 'citations', citations: citations || [] } if citations
+      # The wire's numbering is the [n] markers' ground truth: citations
+      # persist in wire order, duplicates included — the raw list is what
+      # makes positional marker resolution exact when the model skips its
+      # Sources: footer (the footer is one of two resolution paths, never
+      # the storage format). Display dedupes at chip level (source_for /
+      # sourceChips), where the duplicate url collapses anyway.
+      row = append_message(role: 'assistant', content: content, citations: citations.presence, stats: turn_stats)
+      yielder << { type: 'citations', citations: citations } if citations
       # The row id rides the event (not the persisted stats) so the live
       # render's prompt link can target the row — the reload twin links
       # from the row itself.

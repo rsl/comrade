@@ -12,23 +12,50 @@ module SourcesHelper
   # so model output can only produce markdown constructs, never live markup.
   def cited_paragraphs(message)
     citations = message.citations || []
-    body, marker_urls = footer_map(message.content)
+    body, footer_urls = footer_map(message.content)
+    marker_urls, footer_declared = resolution_map(footer_urls, citations)
+
     # A leading blank run in the persisted content (older answers carry
     # "\n\n" from the endpoint's chat template) splits into an empty first
     # paragraph — a phantom mb-3 div. Blank segments never render.
     paragraphs = body.split(/\n\n+/).reject(&:blank?).map do |paragraph|
       render_answer_paragraph(paragraph, citations, marker_urls)
     end
-    paragraphs << footer_fallback(marker_urls, citations) if fallback_due?(body, marker_urls)
+    # The trailing-list fallback stays tied to a declared footer: without
+    # one, the canonical citations include tool-gathered sources the
+    # answer may never have used, and auto-rendering them would claim
+    # provenance the model never declared.
+    paragraphs << footer_fallback(marker_urls, citations) if footer_declared && fallback_due?(body, marker_urls)
     safe_join(paragraphs)
+  end
+
+  # The map paragraphs resolve [n] against, plus whether a declared
+  # footer produced it. The model's footer wins when it exists: its
+  # numbering is the model's own declaration, even a partial one. When
+  # the footer was skipped — the fast lane's habit on ~1 answer in 4 —
+  # the wire numbering is the ground truth: citations persist in wire
+  # order (reply.rb), so [n] is citations[n-1].
+  def resolution_map(footer_urls, citations)
+    return [footer_urls, true] if footer_urls.present?
+
+    [positional_map(citations), false]
+  end
+
+  # The wire's [n]→source map, from citations stored in wire order: [n]
+  # numbered the tool results this turn streamed, and the citation list
+  # records them one for one. A marker past the list (the model invented
+  # a number, or an old row's pre-dedupe numbering) resolves to nothing
+  # and strips bare, as before.
+  def positional_map(citations)
+    citations.each_with_index.to_h { |citation, index| [index + 1, citation] }
   end
 
   # Deep-lane drift: the model declares a "Sources:" footer but never
   # marks the paragraphs inline, so the render contract strips the footer
   # and provenance vanishes (conv 59). Conservative fallback — the
-  # footer's own declared list becomes a trailing chip line. Never the
-  # row's canonical citations: those include tool-gathered sources the
-  # answer may never have used.
+  # footer's own declared list becomes a trailing chip line. Called only
+  # for a declared footer (the caller guards with footer_declared) — a
+  # footerless answer never auto-renders its canonical citations.
   def fallback_due?(body, marker_urls)
     marker_urls.present? && !markers_resolve?(body, marker_urls)
   end

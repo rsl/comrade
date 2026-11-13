@@ -837,11 +837,22 @@ export default class extends Controller {
       return "\n"
     })
 
+    // Footerless answers (the fast lane skips the footer on ~1 in 4)
+    // resolve markers positionally against the citations event — the
+    // server persists citations in wire order, so [n] is citations[n-1].
+    // A declared footer wins: its map is the model's own numbering.
+    // Twin of the footer/positional fork in sources_helper.rb.
+    const footerDeclared = Object.keys(markerSources).length > 0
+    if (!footerDeclared && citations.length) {
+      citations.forEach((citation, index) => { markerSources[index + 1] = citation })
+    }
+
     // Deep-lane drift fallback (twin of footer_fallback in
-    // conversations_helper.rb): the model declared a footer but resolved
+    // sources_helper.rb): the model declared a footer but resolved
     // no inline markers — the footer's own declared list becomes a
     // trailing chip line, resolved and deduped exactly like the
-    // per-paragraph chips.
+    // per-paragraph chips. Tied to a declared footer: a footerless
+    // answer never auto-renders its canonical citations.
     const footerSources = Object.keys(markerSources)
       .sort((a, b) => a - b)
       .map((n) => {
@@ -859,14 +870,18 @@ export default class extends Controller {
         if (!cited) return marker
         resolved = true
         const citation = citations.find((c) => c.url === cited.url)
-        urls.push(citation || { url: cited.url, title: cited.title || new URL(cited.url).host })
+        const source = citation || { url: cited.url, title: cited.title || new URL(cited.url).host }
+        // One chip per url per paragraph — positional resolution makes
+        // two markers resolve to one source routinely (a url re-found in
+        // a later search). Twin of paragraph_sources' terminal uniq.
+        if (!urls.some((u) => u.url === source.url)) urls.push(source)
         return ""
       })
       const chips = this.sourceChips(urls, escape)
       const block = marked.parse(escape(plain), { breaks: true })
       return `<div class="mb-3 last:mb-0">${block}</div>${chips}`
     }).join("")
-    if (footerSources.length && !resolved) html += this.sourceChips(footerSources, escape)
+    if (footerDeclared && footerSources.length && !resolved) html += this.sourceChips(footerSources, escape)
     content.innerHTML = html
     // Completion merges the foreman into the action line: the status
     // line and its live log retire, the merged line carries the dot and

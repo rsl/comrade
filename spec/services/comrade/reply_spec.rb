@@ -34,4 +34,62 @@ RSpec.describe Comrade::Reply do
       expect(system_messages(conversation).count).to eq(1)
     end
   end
+
+  describe 'the citations storage contract' do
+    # The [n] markers' ground truth is the wire's own numbering, so the
+    # citation list persists in wire order — duplicates included. The
+    # render's positional fallback (SourcesHelper.resolution_map) is
+    # exact only while this holds; a uniq here silently reintroduces the
+    # footerless-answer bug of 2026-11-12 (a repeated url shifted every
+    # later marker by one).
+
+    def search_frame(calls)
+      tool_calls = calls.each_with_index.to_h do |(name, arguments), index|
+        [index, { id: "call_#{ index }", name: name, arguments: JSON.generate(arguments) }]
+      end
+      { content: nil, tool_calls: tool_calls }
+    end
+
+    def drive_reply(conversation, frames, search_results)
+      reply = Comrade::Reply.new(conversation: conversation, content: 'a question')
+      reply.append_message(role: 'user', content: 'a question')
+      allow(Comrade::Reply::TurnLane).to receive(:build).and_return(
+        instance_double(Comrade::Reply::TurnLane, kind: 'legacy', model: 'test-model', effort: nil)
+      )
+      allow(reply).to receive(:stream_pass).and_return(*frames)
+      allow(Comrade::Tools::WebSearch).to receive(:call).and_return(*search_results)
+
+      events = []
+      reply.enumerator.each { |event| events << event }
+      events
+    end
+
+    it 'persists citations in wire order, duplicates included' do
+      conversation = Conversation.create!
+      # Two parallel searches surface the same url once each — the wire
+      # numbers it [2] and [3]; both entries must survive to the row.
+      frames = [
+        search_frame([
+          ['web_search', { query: 'lanterns' }],
+          ['web_search', { query: 'canceled' }],
+        ]),
+        { content: 'Answer text', tool_calls: {} },
+      ]
+      searches = [
+        [{ 'title' => 'Forbes', 'url' => 'https://forbes.com/lanterns' },
+         { 'title' => 'Complex', 'url' => 'https://complex.com/lanterns' }],
+        [{ 'title' => 'Complex again', 'url' => 'https://complex.com/lanterns' },
+         { 'title' => 'Polygon', 'url' => 'https://polygon.com/lanterns' }],
+      ]
+
+      events = drive_reply(conversation, frames, searches)
+      row = conversation.messages.order(:id).last
+
+      expect(row.citations.map { |citation| citation['url'] }).to eq(
+        ['https://forbes.com/lanterns', 'https://complex.com/lanterns', 'https://complex.com/lanterns', 'https://polygon.com/lanterns']
+      )
+      event = events.detect { |e| e[:type] == 'citations' }
+      expect(event[:citations].map { |citation| citation[:url] }).to eq(row.citations.map { |citation| citation['url'] })
+    end
+  end
 end
