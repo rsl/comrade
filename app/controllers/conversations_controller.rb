@@ -57,14 +57,14 @@ class ConversationsController < ApplicationController
   # first exchange. The owner is stamped from presence: nil on the
   # commune, so anon asks land in the shared stream.
   def create
+    return render_blank_turn if blank_turn?
+
     conversation = Conversation.start!(
-      content: params.require(:content),
+      content: params[:content].to_s,
       images: Array(params[:images]),
       enlistee: current_enlistee,
     )
-    response.status = :created
-    response.headers['Location'] = conversation_url(conversation)
-    response.headers['X-Conversation-Id'] = conversation.id.to_s
+    render_created(conversation)
     stream_reply(conversation)
   end
 
@@ -75,6 +75,25 @@ class ConversationsController < ApplicationController
   # under you needs the redirect home instead.
   def remove_row_in_place?(conversation)
     request.format.turbo_stream? && !viewing_conversation?(conversation)
+  end
+
+  # The model's own rule guards the turn: content or images, never both
+  # blank — an empty send has no row to create and no turn to stream, and
+  # the answer shape matches the StreamsReply rescues.
+  def blank_turn?
+    params[:content].to_s.strip.blank? && params[:images].blank?
+  end
+
+  def render_blank_turn
+    render json: { errors: ["Content can't be blank"] }, status: :unprocessable_content
+  end
+
+  # 201 with Location and X-Conversation-Id headers, body being the SSE
+  # reply stream — one roundtrip for the first exchange.
+  def render_created(conversation)
+    response.status = :created
+    response.headers['Location'] = conversation_url(conversation)
+    response.headers['X-Conversation-Id'] = conversation.id.to_s
   end
 
   def viewing_conversation?(conversation)

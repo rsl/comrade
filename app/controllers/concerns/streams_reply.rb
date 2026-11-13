@@ -34,7 +34,7 @@ module StreamsReply
   def stream_reply(conversation)
     count_calibration_signal
     set_stream_headers
-    content = params.require(:content)
+    content = params[:content].to_s
     # The reader's search-mode switch: only a known mode survives —
     # anything else is the default turn.
     mode = params[:mode].to_s.in?(%w[images]) ? 'images' : nil
