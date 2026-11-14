@@ -635,3 +635,23 @@ input,
 textarea {
   font-size: max(1rem, 16px);
 }
+
+/* The visual-viewport readout's on-screen report (?vvdebug=1, see
+   vvdebug.js): fixed to the top so the composer and keyboard stay
+   observable below it. A debug affordance, not page furniture. */
+.c-vvdebug {
+  position: fixed;
+  left: 50%;
+  top: 8rem;
+  transform: translateX(-50%);
+  z-index: 100;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-hairline);
+  background: var(--color-press-dark);
+  color: var(--color-kiosk);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  line-height: 1.5;
+  white-space: pre;
+  text-align: left;
+}

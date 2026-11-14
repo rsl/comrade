@@ -134,5 +134,11 @@
         hunt's close (2026-11-14): the failure is Firefox for iOS
         failing to activate load-time autofocus — see
         .agent-notes/handoff-rsl-image-attachments.md. %>
+    <%# The visual-viewport readout, only under ?vvdebug=1: live
+        vv.height/offsetTop, innerHeight, scrollY, and the shell height
+        — the numbers the shell's sizing depends on. Auto-nonced. %>
+    <% if params[:vvdebug] %>
+      <%= javascript_include_tag "vvdebug" %>
+    <% end %>
   </body>
 </html>
