@@ -1,6 +1,8 @@
 # The provenance render contract: how inline [n] markers, the model's
-# Sources: footer, and the row's canonical citations combine into source
-# chips. All shapes are hermetic — literal content strings modeled on the
+# Sources: footer, and the row's canonical citations combine into the
+# turn's margin note card. The paragraphs render bare — markers are
+# consumed, sources live in the note (turn_sources/note_card). All
+# shapes are hermetic — literal content strings modeled on the
 # real failing rows (fast-lane footerless answers, 2026-11-12). The JS
 # twin (renderCitations) is review-locked, not spec-locked.
 require 'rails_helper'
@@ -20,11 +22,17 @@ RSpec.describe SourcesHelper, type: :helper do
 
       html = helper.cited_paragraphs(answer)
 
-      expect(html).to include('href="https://ign.com/wikis/enshrouded/Dog_Search"')
-      expect(html).to include('href="https://dotesports.com/enshrouded/taming"')
-      expect(html).to include('IGN Dog Search')
+      expect(html).to include('The dog comes from a Hunter quest.')
       expect(html).not_to include('[1]')
       expect(html).not_to include('[2]')
+      expect(html).not_to include('href=')
+
+      expect(helper.turn_sources(answer)).to eq(
+        [
+          { 'n' => 1, 'url' => 'https://ign.com/wikis/enshrouded/Dog_Search', 'title' => 'IGN Dog Search' },
+          { 'n' => 2, 'url' => 'https://dotesports.com/enshrouded/taming', 'title' => 'Taming Guide' },
+        ],
+      )
     end
 
     it 'resolves through a declared footer even when it disagrees with the wire numbering' do
@@ -35,11 +43,14 @@ RSpec.describe SourcesHelper, type: :helper do
 
       html = helper.cited_paragraphs(answer)
 
-      expect(html).to include('href="https://polygon.com/lanterns"')
-      expect(html).not_to include('href="https://forbes.com/lanterns"')
+      expect(html).to include('Rumors spread.')
+
+      expect(helper.turn_sources(answer)).to eq(
+        [{ 'n' => 1, 'url' => 'https://polygon.com/lanterns', 'title' => 'Polygon' }],
+      )
     end
 
-    it 'strips a marker past the list bare — no invented chip' do
+    it 'leaves a marker past the list literal — no invented source' do
       answer = Answer.new(
         'Season 2 is undecided [7].',
         [{ 'url' => 'https://forbes.com/lanterns', 'title' => 'Forbes' }],
@@ -47,8 +58,8 @@ RSpec.describe SourcesHelper, type: :helper do
 
       html = helper.cited_paragraphs(answer)
 
-      expect(html).not_to include('[7]')
-      expect(html).not_to include('sources: ')
+      expect(html).to include('Season 2 is undecided [7].')
+      expect(helper.turn_sources(answer)).to be_empty
     end
 
     it 'never auto-renders the canonical citations when the model wrote no markers' do
@@ -66,7 +77,7 @@ RSpec.describe SourcesHelper, type: :helper do
       expect(html).not_to include('sources: ')
     end
 
-    it 'renders the declared footer as a trailing line when no marker resolved' do
+    it 'falls back to the declared footer list when no marker resolved' do
       answer = Answer.new(
         "The fix isn't a different farm spot.\n\nSources:\n[1] Wiki — https://enshrouded.wiki.gg/gems",
         [{ 'url' => 'https://enshrouded.wiki.gg/gems', 'title' => 'Gem Wiki' }],
@@ -74,12 +85,15 @@ RSpec.describe SourcesHelper, type: :helper do
 
       html = helper.cited_paragraphs(answer)
 
-      expect(html).not_to include('Sources:')
-      expect(html).to include('sources: ')
-      expect(html).to include('href="https://enshrouded.wiki.gg/gems"')
+      expect(html).to include("The fix isn't a different farm spot.")
+      expect(html).not_to include('href=')
+
+      expect(helper.turn_sources(answer)).to eq(
+        [{ 'n' => 1, 'url' => 'https://enshrouded.wiki.gg/gems', 'title' => 'Gem Wiki' }],
+      )
     end
 
-    it 'collapses two markers that resolve to one url into one chip' do
+    it 'collapses two markers that resolve to one url into one source' do
       answer = Answer.new(
         'The map is an estimate [1], and it spread through reposts [3].',
         [
@@ -91,9 +105,23 @@ RSpec.describe SourcesHelper, type: :helper do
 
       html = helper.cited_paragraphs(answer)
 
-      expect(html.scan('href="https://tiktok.com/map"').count).to eq(1)
-      expect(html).to include('The Map')
-      expect(html).not_to include('The Map Again')
+      expect(html).to include('The map is an estimate, and it spread through reposts.')
+
+      expect(helper.turn_sources(answer)).to eq(
+        [{ 'n' => 1, 'url' => 'https://tiktok.com/map', 'title' => 'The Map' }],
+      )
+    end
+
+    it 'renders the none line on a knowledge-only answer' do
+      answer = Answer.new(
+        'Season 1 is done; season 2 is undecided.',
+        [{ 'url' => 'https://forbes.com/lanterns', 'title' => 'Forbes' }],
+      )
+
+      html = helper.note_card({ answer: answer, note: 3 })
+
+      expect(html).to include('none — from model knowledge')
+      expect(html).not_to include('href=')
     end
   end
 end

@@ -17,9 +17,9 @@ RSpec.describe 'Identity and scoping', type: :request do
 
   def chip
     # The chip span carries the name (or "the commune") with the full
-    # value mirrored into its aria-label — scoped by its truncate class,
-    # since other aria-labels (font sizer) live on the page.
-    response.body[/class="truncate text-sm text-neutral-300" aria-label="([^"]+)"/, 1]
+    # value mirrored into its aria-label — scoped by its c-chip-name
+    # class (the rail-foot chip; other aria-labels live on the page).
+    response.body[/class="c-chip-name" aria-label="([^"]+)"/, 1]
   end
 
   def cookie_token
