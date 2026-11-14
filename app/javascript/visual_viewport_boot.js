@@ -31,3 +31,12 @@ function pinWindowScroll () {
 window.addEventListener('focusin', () => {
   ;[100, 300, 600, 1000].forEach((delay) => setTimeout(pinWindowScroll, delay))
 })
+
+// The keyboard-closing resize can land mid-animation and leave the shell
+// stuck at the keyboard-open height (2026-11-14, ?vvdebug=1: composer
+// stranded ~70px above the bottom with the keyboard gone). Re-measure on
+// focusout with the same retry ladder — the last read wins once the
+// viewport settles.
+window.addEventListener('focusout', () => {
+  ;[100, 300, 600, 1000].forEach((delay) => setTimeout(setShellHeight, delay))
+})

@@ -600,9 +600,29 @@
    viewport units can't express "minus keyboard", and a fixed shell sized to
    the layout viewport ghosts upward when iOS Safari pans on focus.
    Unlayered deliberately: unlayered rules outrank every utility layer, and
-   this height must never lose to a call-site utility. */
+   this height must never lose to a call-site utility. The shell is normal
+   flow, not position:fixed — iOS 26 Safari displaces fixed elements on
+   keyboard transitions (WebKit #297779); the document never scrolls, so
+   flow anchoring is geometrically identical and outside the buggy layer. */
 .c-shell {
   height: var(--shell-height, 100%);
+  /* The page's bottom edge: a rule where the sheet ends, plus the
+     sheet's drop shadow falling onto whatever band the accessory bar
+     reveals below — the page sits on the desk, the desk is under it. */
+  border-bottom: 1px solid var(--color-hairline);
+  box-shadow: 0 7px 12px -4px rgba(0, 0, 0, 0.55);
+}
+
+/* The body beyond the shell: the well's crosshatch on a darker base than
+   the desk hatch — a recessed strip, not more page. The shell's bottom
+   rule (below) draws the page's edge; when the keyboard's accessory bar
+   reserves a band here (iOS 26 Safari, see .c-shell above), it reads as
+   a deliberate margin under the sheet. */
+.c-beyond {
+  background:
+    repeating-linear-gradient(45deg, transparent 0, transparent 5px, rgba(74, 65, 48, 0.2) 5px, rgba(74, 65, 48, 0.2) 6px),
+    repeating-linear-gradient(135deg, transparent 0, transparent 5px, rgba(74, 65, 48, 0.13) 5px, rgba(74, 65, 48, 0.13) 6px),
+    #171309;
 }
 
 /* iOS Safari auto-zooms the visual viewport on focus when the focused
