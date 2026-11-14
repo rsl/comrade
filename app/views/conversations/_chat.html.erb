@@ -37,7 +37,7 @@
             <p class="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-newsprint-dim">The commune takes anyone, and what's asked there sits in the open for the whole household. Or use a handle, and your conversations stay under it: not really private, but basically, yeh?</p>
             <%= form_with url: enlistment_path, class: 'mx-auto mt-6 flex max-w-md items-center' do |form| %>
               <%= form.text_field :name, required: true, maxlength: 40, autocomplete: 'off',
-                    placeholder: 'What should we call you?',
+                    placeholder: 'What should we call you?', 'aria-label': 'What should we call you?',
                     class: 'min-w-0 grow border border-hairline bg-panel px-4 py-3 font-serif leading-snug text-newsprint placeholder:text-kiosk focus:border-kiosk focus:outline-none' %>
               <%= form.button 'Enlist', class: 'min-w-[4.5rem] cursor-pointer bg-soviet px-4 py-3 font-poster uppercase tracking-widest leading-snug text-newsprint hover:bg-red-deep' %>
             <% end %>
@@ -114,7 +114,7 @@
             opening an old conversation never grabs focus — only a fresh
             chat claims it natively, and the connect() retries (rAF,
             200ms) back it up for the iPad's dropped UI half. %>
-        <%= tag.textarea nil, name: 'content', rows: 1, autofocus: !messages.any?, placeholder: messages.any? ? 'Reply…' : 'What do you need, comrade?', 'data-action': 'keydown->stream-reader#keydown paste->stream-reader#paste', 'data-short-placeholder': messages.any? ? nil : 'Sup, comrade?', class: 'c-cline-input' %>
+        <%= tag.textarea nil, name: 'content', rows: 1, autofocus: !messages.any?, placeholder: messages.any? ? 'Reply…' : 'What do you need, comrade?', 'aria-label': messages.any? ? 'Reply' : 'Ask comrade', 'data-action': 'keydown->stream-reader#keydown paste->stream-reader#paste', 'data-short-placeholder': messages.any? ? nil : 'Sup, comrade?', class: 'c-cline-input' %>
         <%# The answer-mode switch: what this one ask rides. "all" is the
             unforced mode — knowledge, web search, page fetch, the model's
             pick per question; "images" narrows the turn to pictures. It
