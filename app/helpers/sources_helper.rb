@@ -1,32 +1,48 @@
 # The provenance half of the transcript render: the model's "Sources:"
-# footer, the inline [n] markers it keys, and the quiet chip lines they
-# become. Split from ConversationsHelper on the module-length gate —
+# footer, the inline [n] markers it keys, the margin-note card they fill,
+# and the tool chips that record what comrade did to earn the answer.
+# Split from ConversationsHelper on the module-length gate —
 # the twins in stream_reader_controller.js mirror these methods.
 module SourcesHelper
-  # Answer paragraphs with per-paragraph source chips. Inline [n] markers
-  # never render: combined with the model's "Sources:" footer they are the
-  # paragraph→source signal, consumed and stripped. A paragraph with no
-  # resolvable markers renders bare; the footer itself never renders.
-  # Paragraph text is markdown — the model writes markdown — rendered by
-  # commonmarker. Raw HTML in the source is escaped by default (no :unsafe),
-  # so model output can only produce markdown constructs, never live markup.
+  # The quiet chip text for a tool row: what comrade did, in prose, with
+  # the variable part emphasized. Byte-shape twin of the stream reader's
+  # toolChip.
+  def tool_note(tool)
+    label, value = tool_note_parts(tool)
+    safe_join([label, ' ', tag.em(value)])
+  end
+
+  def tool_note_parts(tool)
+    args = tool.tool_payload['arguments']
+    case tool.tool_name
+    when 'web_search' then ['searched for:', args['query']]
+    when 'image_search' then ['searched images for:', args['query']]
+    when 'read_image' then ['read image:', args['key']]
+    else ['fetched:', args['url']]
+    end
+  end
+
+  # Answer paragraphs, markdown-rendered. Inline [n] markers never render
+  # in the text: combined with the model's "Sources:" footer they are the
+  # paragraph→source signal, consumed and stripped — the sources they
+  # signal live in the turn's margin note card (note_card), not under the
+  # paragraphs. A marker that resolves to nothing stays literal, as
+  # before. Paragraph text is markdown — the model writes markdown —
+  # rendered by commonmarker. Raw HTML in the source is escaped by
+  # default (no :unsafe), so model output can only produce markdown
+  # constructs, never live markup.
   def cited_paragraphs(message)
     citations = message.citations || []
     body, footer_urls = footer_map(message.content)
-    marker_urls, footer_declared = resolution_map(footer_urls, citations)
-
-    # A leading blank run in the persisted content (older answers carry
-    # "\n\n" from the endpoint's chat template) splits into an empty first
-    # paragraph — a phantom mb-3 div. Blank segments never render.
-    paragraphs = body.split(/\n\n+/).reject(&:blank?).map do |paragraph|
-      render_answer_paragraph(paragraph, citations, marker_urls)
-    end
-    # The trailing-list fallback stays tied to a declared footer: without
-    # one, the canonical citations include tool-gathered sources the
-    # answer may never have used, and auto-rendering them would claim
-    # provenance the model never declared.
-    paragraphs << footer_fallback(marker_urls, citations) if footer_declared && fallback_due?(body, marker_urls)
-    safe_join(paragraphs)
+    marker_urls, = resolution_map(footer_urls, citations)
+    safe_join(
+      body.split(/\n\n+/).reject(&:blank?).map do |paragraph|
+        plain = strip_resolved_markers(paragraph, marker_urls)
+        block = Commonmarker.to_html(sans_marker_ranges(sans_sup_tags(plain))).strip
+        # rubocop:disable-next Rails/OutputSafety
+        block.html_safe
+      end,
+    )
   end
 
   # The map paragraphs resolve [n] against, plus whether a declared
@@ -50,60 +66,76 @@ module SourcesHelper
     citations.each_with_index.to_h { |citation, index| [index + 1, citation] }
   end
 
-  # Deep-lane drift: the model declares a "Sources:" footer but never
-  # marks the paragraphs inline, so the render contract strips the footer
-  # and provenance vanishes (conv 59). Conservative fallback — the
-  # footer's own declared list becomes a trailing chip line. Called only
-  # for a declared footer (the caller guards with footer_declared) — a
-  # footerless answer never auto-renders its canonical citations.
-  def fallback_due?(body, marker_urls)
-    marker_urls.present? && !markers_resolve?(body, marker_urls)
-  end
-
-  # Exactly the condition that renders paragraph chips: at least one
-  # inline [n] marker resolving through the footer map.
-  def markers_resolve?(body, marker_urls)
-    body.scan(/\[(\d+)\]/).any? { |(number)| marker_urls.key?(number.to_i) }
-  end
-
-  # The trailing chip line itself: the footer's entries in marker order,
-  # resolved the way markers are (canonical citations win on url match,
-  # titles beat bare hosts), deduped by url. Same wrapper classes as the
-  # per-paragraph chip lines — byte-identical with the stream reader's
-  # footerSources append in renderCitations.
-  def footer_fallback(marker_urls, citations)
-    sources = marker_urls.sort.map { |_, cited| source_for(cited, citations) }.uniq { |source| source['url'] }
-    content_tag(:div, source_chips(sources), class: 'mt-1 mb-4 text-xs text-neutral-500')
-  end
-
-  # One answer paragraph: source chips resolved from its [n] markers,
-  # text markdown-rendered beneath them.
-  def render_answer_paragraph(paragraph, citations, marker_urls)
-    plain, urls = paragraph_sources(paragraph, citations, marker_urls)
-    block = Commonmarker.to_html(sans_marker_ranges(sans_sup_tags(plain))).strip
-    chips = content_tag(:div, source_chips(urls), class: 'mt-1 mb-4 text-xs text-neutral-500') if urls.any?
-    # rubocop:disable-next Rails/OutputSafety
-    content_tag(:div, block.html_safe, class: 'mb-3 last:mb-0') + chips
-  end
-
-  # Strips [n] markers from a paragraph and collects the source hashes
-  # they resolve to — canonical citations where the url matches, bare
-  # url/title pairs when the model cited something outside the list.
-  # The whitespace before a marker goes with it, so "word [3]." renders
-  # "word.", never "word ." — the marker sat between the space and the
-  # punctuation, and the space belongs to the marker, not the word.
-  # :reek:TooManyStatements — the gsub block is one coherent scan.
-  def paragraph_sources(paragraph, citations, marker_urls)
-    sources = []
-    plain = paragraph.gsub(/\s*\[(\d+)\]/) do
-      # The block's return value is the replacement text: each marker
-      # vanishes from the rendered paragraph, and only its source hash
-      # (collected above, when it resolves) survives into the chips.
-      cited = marker_urls[Regexp.last_match(1).to_i]
-      sources << source_for(cited, citations) if cited
-      ''
+  # Strips the [n] markers that resolve through the map — the whitespace
+  # before a marker goes with it, so "word [3]." renders "word.", never
+  # "word .". Unresolvable markers stay literal. Byte-shape twin of the
+  # marker pass in the stream reader's renderCitations.
+  def strip_resolved_markers(paragraph, marker_urls)
+    paragraph.gsub(/\s*\[(\d+)\]/) do
+      marker_urls.key?(Regexp.last_match(1).to_i) ? '' : Regexp.last_match(0)
     end
-    [sans_marker_ranges(sans_sup_tags(plain)), sources.uniq { |source| source['url'] }]
+  end
+
+  # The turn's sources for its margin note card: the union of the
+  # paragraphs' marker resolutions in first-appearance order, deduped by
+  # url, each carrying the marker number that first cited it. Deep-lane
+  # drift (a declared footer with no inline markers) falls back to the
+  # footer's own declared list, resolved and deduped exactly like the
+  # inline markers — the trailing-chip fallback's heir. Byte-shape twin
+  # of the noteSources walk in the stream reader's renderCitations.
+  # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity — one coherent scan over the paragraphs' markers; the forks are the footer/positional map and the drift fallback.
+  # :reek:TooManyStatements — the source walk is one coherent scan.
+  def turn_sources(message)
+    citations = message.citations || []
+    body, footer_urls = footer_map(message.content)
+    marker_urls, = resolution_map(footer_urls, citations)
+    sources = []
+    remember = ->(number, cited) {
+      source = source_for(cited, citations)
+      next if sources.any? { |known| known['url'] == source['url'] }
+
+      # rubocop:disable-next Style/StringHashKeys
+      sources << { 'n' => number, 'url' => source['url'], 'title' => source['title'] }
+    }
+    body.split(/\n\n+/).each do |paragraph|
+      paragraph.scan(/\[(\d+)\]/).map(&:first).map(&:to_i).each do |number|
+        cited = marker_urls[number]
+        remember.call(number, cited) if cited
+      end
+    end
+    if sources.empty? && footer_urls.present?
+      footer_urls.sort.each { |number, cited| remember.call(number, cited) }
+    end
+    sources
+  end
+  # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+
+  # The margin-note card itself: the note number, then one line per
+  # source — marker, title link, go-deeper — or the "none" line when the
+  # answer drew on model knowledge alone. Byte-shape twin of the stream
+  # reader's fillNote.
+  def note_card(exchange)
+    answer = exchange[:answer]
+    return '' unless answer
+
+    sources = turn_sources(answer)
+    lines = sources.map { |source| note_line(source) }
+    lines << tag.span('none — from model knowledge', class: 'c-note-line') if sources.empty?
+    tag.div class: 'c-note' do
+      safe_join([tag.b(format('%02d', exchange[:note]), class: 'c-note-num'), safe_join(lines)])
+    end
+  end
+
+  def note_line(source)
+    title = link_to(source['title'] || source['url'], source['url'], target: '_blank', rel: 'noopener')
+    deeper = link_to(
+      'go deeper',
+      '#',
+      data: { title: source['title'], url: source['url'] },
+      data_action: 'stream-reader#goDeeper',
+      class: 'go-deeper',
+    )
+    tag.span(safe_join([tag.em(source['n']), ' · ', title, ' ', deeper]), class: 'c-note-line')
   end
 
   # jsonb row data — string keys are the storage contract.
@@ -118,33 +150,6 @@ module SourcesHelper
     }
   end
 
-  # Inline source chips: title-only links, quiet, one per source. Each
-  # carries a go-deeper affordance — the twins in stream_reader_controller.js
-  # (sourceChips) must stay byte-shape-identical with this markup; the post-
-  # first-reply Turbo.visit and the streaming path swap them freely.
-  def source_chips(sources)
-    return ''.html_safe if sources.blank?
-
-    links = sources.map do |source|
-      title = link_to(
-        source['title'] || source['url'],
-        source['url'],
-        target: '_blank',
-        rel: 'noopener',
-        class: 'underline hover:text-neutral-300',
-      )
-      deeper = link_to(
-        'go deeper',
-        '#',
-        data: { title: source['title'], url: source['url'] },
-        data_action: 'stream-reader#goDeeper',
-        class: 'go-deeper cursor-pointer underline hover:text-neutral-300',
-      )
-      safe_join([title, deeper], ' · ')
-    end
-    safe_join(['sources: '.html_safe, safe_join(links, ' · ')])
-  end
-
   # The model sometimes copies the interface's superscript markup into
   # its own text; it renders as escaped noise, so it goes.
   def sans_sup_tags(text)
@@ -154,7 +159,7 @@ module SourcesHelper
   # Range-shaped citation markers ("[1–5]", "[1]–[3]") resolve to no
   # single source, so they'd survive the [n] strip as literal text.
   # The whitespace before the range goes with it — same rule as the
-  # [n] strip in paragraph_sources ("word [1–5]." renders "word.").
+  # [n] strip in strip_resolved_markers ("word [1–5]." renders "word.").
   # Mirrors sansRangeMarkers in stream_reader_controller.js.
   def sans_marker_ranges(text)
     text.gsub(/\s*\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\s*\[\d+\s*[–—-]\s*\d+\]/, '')

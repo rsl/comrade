@@ -1,35 +1,598 @@
 @import "tailwindcss";
 
-/* Comrade palette: red-black ground, poster-red structure, gold jewelry.
-   Body text stays neutral — the ideology lives in the frame. */
+/* Comrade palette — the Ledger: a dark press-ledger. Ground is aged
+   newsprint-shadow browns; type prints in newsprint on the sheet; the
+   poster red is the masthead, the spine, and the Ask button; gold is
+   jewelry (completed dots, inline code, the identity chip's dot).
+   Type scale comes from the frame: Oswald for the poster voice, Source
+   Serif 4 for everything a reader reads, JetBrains Mono for the
+   press's small furniture. */
 @theme {
-  /* Grounds are the soviet red sunk into near-black (~8% and ~14% of
-     #cc0000 over black), so every surface hums the same hue. */
-  --color-ground: #170505;
-  --color-ground-raised: #230a0a;
-  /* The ground lifted ~10% toward white — for hairline dividers that sit
-     in the background family instead of drawing attention. */
-  --color-ground-bright: color-mix(in oklab, var(--color-ground) 90%, white);
-  --color-soviet: #cc0000;
-  --color-gold: #c9a227;
-  /* Cream tuned to sit beside the gold — same warmth, much lighter.
-     Focus lifts the composer one step brighter. */
-  --color-cream: #cab992;
-  --color-cream-bright: #f3e9cf;
+  --color-press-dark: #241f15;
+  --color-ground: #2b2519;
+  --color-panel: #332c1e;
+  --color-hairline: #4a4130;
+  --color-newsprint: #f1e9d4;
+  --color-newsprint-dim: #d6c9a8;
+  --color-ink: #241f15;
+  --color-soviet: #e8432a;
+  --color-red-text: #f0603f;
+  --color-red-deep: #b53422;
+  --color-gold: #d9a441;
+  --color-kiosk: #a89a7d;
+  --color-lightline: #8a7c5e;
+  --color-shadow: #0d0a06;
+  --color-question: #ece1c6;
+
+  /* Legacy token names kept as aliases so straggler call sites keep
+     rendering in the new language; the sweep replaces them with the
+     Ledger names as views are touched. */
+  --color-ground-raised: #332c1e;
+  --color-ground-bright: #4a4130;
+  --color-cream: #f1e9d4;
+  --color-cream-bright: #f1e9d4;
+
+  --font-poster: "Oswald", sans-serif;
+  --font-serif: "Source Serif 4", serif;
+  --font-mono: "JetBrains Mono", monospace;
 }
 
 /* House component classes — styling shared by elements the server render
    and its client twins both construct. `c-` marks the family so a house
    class never reads as a Tailwind utility; state classes (`hidden`,
-   toggle marks) ride the call site, never the definition. The one
-   exception to `@layer components` below is deliberate and commented. */
+   toggle marks) ride the call site, never the definition. Type sizes are
+   rem-based so the A−/A+ root-font stepper scales the whole ledger; pure
+   geometry (column widths, the spine, node squares) stays px. */
 @layer components {
-  /* The foreman's timestamped log <pre>: collapsed until the action line's
-     total time opens it — the toggle targets .c-turn-log and flips hidden.
-     Shared by the server render (turn_log_pre) and both client renders;
-     one definition replaces what was a byte-twin utility string. */
+  /* ── Masthead ─────────────────────────────────────────────── */
+
+  .c-mast-band {
+    @apply flex flex-none items-baseline justify-between bg-soviet px-8 pb-4 pt-[1.125rem];
+  }
+
+  .c-poster {
+    @apply flex items-center gap-[0.7rem] font-poster font-semibold uppercase leading-none text-ink;
+    font-size: 2.0625rem;
+    letter-spacing: 0.04em;
+  }
+
+  .c-poster-star {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .c-edition-band {
+    @apply min-w-0 truncate font-mono uppercase text-ink;
+    font-size: 0.6rem;
+    letter-spacing: 0.14em;
+  }
+
+  /* The sub-band's bottom edge is the Scotch rule — 1px kiosk @ 55%,
+     2px gap, lightline — as a 5px no-repeat bottom gradient (the B4
+     border device). */
+  .c-mast-sub {
+    @apply flex flex-none items-baseline gap-6 px-8 pb-3 pt-2.5;
+    /* Opaque: the body beyond the shell is the dark hatch (c-beyond), and
+       this band was transparent to the body color before that change. */
+    background-color: var(--color-ground);
+    background-image: linear-gradient(rgba(168, 154, 125, 0.55) 0 1px, transparent 1px 3px, var(--color-lightline) 3px 5px);
+    background-repeat: no-repeat;
+    background-position: bottom;
+    background-size: 100% 5px;
+  }
+
+  .c-tagline {
+    @apply font-serif italic text-newsprint-dim;
+    font-size: 0.8125rem;
+  }
+
+  .c-ed-right {
+    @apply ml-auto flex items-baseline gap-3;
+  }
+
+  .c-ed-link {
+    @apply font-mono uppercase text-kiosk no-underline;
+    font-size: 0.5625rem;
+    letter-spacing: 0.08em;
+  }
+
+  .c-ed-link:hover {
+    color: var(--color-newsprint);
+  }
+
+  /* ── The desk: sheet, sources well, spine ─────────────────── */
+
+  .c-desk {
+    @apply relative min-h-0 flex-1 overflow-hidden;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  /* The transcript ground: a sheet lifting off the press-dark desk,
+     its top lit. Right edge stops where the sources well begins. */
+  .c-sheet {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 260px;
+    z-index: 0;
+    background: linear-gradient(180deg, #3b321f, #31291a 220px);
+    box-shadow:
+      inset 0 1px 0 rgba(241, 233, 212, 0.13),
+      inset 1px 0 0 rgba(241, 233, 212, 0.08),
+      inset -1px 0 0 rgba(0, 0, 0, 0.28),
+      inset 0 0 0 1px rgba(74, 65, 48, 0.4);
+  }
+
+  /* The sources well: crosshatched card stock, recessed by inset edge
+     shadows — no border (the B5 device). */
+  .c-sources-well {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 260px;
+    z-index: 0;
+    background:
+      repeating-linear-gradient(45deg, transparent 0, transparent 5px, rgba(74, 65, 48, 0.2) 5px, rgba(74, 65, 48, 0.2) 6px),
+      repeating-linear-gradient(135deg, transparent 0, transparent 5px, rgba(74, 65, 48, 0.13) 5px, rgba(74, 65, 48, 0.13) 6px),
+      #1f1b12;
+    box-shadow:
+      inset 9px 0 8px -7px rgba(0, 0, 0, 0.5),
+      inset -1px 0 0 rgba(0, 0, 0, 0.35);
+  }
+
+  .c-spine {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 2rem;
+    width: 2px;
+    z-index: 0;
+    background: var(--color-soviet);
+    opacity: 0.55;
+  }
+
+  .c-scroll {
+    @apply relative z-10 col-span-2 flex min-h-0 flex-col overflow-y-auto;
+    grid-row: 1;
+  }
+
+  /* The two-column content grid inside the scroller: transcript cells
+     left, note cards right. Every row element shares the columns, so
+     the note column lines up across all turns. */
+  .c-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+  }
+
+  .c-col-head {
+    @apply relative font-mono uppercase text-kiosk;
+    font-size: 0.5625rem;
+    letter-spacing: 0.14em;
+  }
+
+  .c-head-q {
+    grid-column: 1;
+    padding: 0.875rem 1.75rem 0.5rem 4rem;
+  }
+
+  .c-head-sources {
+    grid-column: 2;
+    padding: 0.875rem 1.125rem 0.5rem 1rem;
+  }
+
+  /* One exchange: question cell, answer stack, note card. The exchange
+     spans both outer columns so its note column lines up with the well;
+     the note pins to the answer's row (row 2) — auto-placement puts the
+     answer stack there after the question, and the note claims the
+     second column of that same row. */
+  .c-turn {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) 260px;
+  }
+
+  .c-q {
+    grid-column: 1;
+    position: relative;
+    padding: 1rem 1.75rem 0 4rem;
+  }
+
+  .c-a-wrap {
+    grid-column: 1;
+    padding: 0 1.75rem 1.125rem 4rem;
+  }
+
+  /* The margin-note card: a printed card lifting off the well — layered
+     drop shadows, inset top/side highlights, a short vertical gradient
+     (the shadowed-card device). No border. */
+  .c-note {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+    max-height: 100%;
+    overflow: hidden;
+    padding: 0.5rem 1.125rem 2.625rem 1rem;
+    background: linear-gradient(180deg, #37301f, #2a241a 18px);
+    box-shadow:
+      2px 3px 4px rgba(0, 0, 0, 0.45),
+      5px 9px 16px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(241, 233, 212, 0.1),
+      inset 1px 0 0 rgba(241, 233, 212, 0.05);
+  }
+
+  .c-note-num {
+    @apply mb-[0.3125rem] block font-mono font-medium text-red-text;
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+  }
+
+  .c-note-line {
+    @apply mb-[0.375rem] block font-mono text-kiosk;
+    font-size: 0.594rem;
+    line-height: 1.7;
+    letter-spacing: 0.03em;
+  }
+
+  .c-note-line em {
+    font-style: normal;
+    color: var(--color-newsprint-dim);
+  }
+
+  .c-note-line a {
+    color: inherit;
+  }
+
+  .c-note-line a:hover {
+    color: var(--color-newsprint);
+  }
+
+  /* ── Turn anatomy ─────────────────────────────────────────── */
+
+  .c-turn-label {
+    @apply font-mono uppercase text-kiosk;
+    font-size: 0.594rem;
+    letter-spacing: 0.16em;
+    margin-bottom: 0.4375rem;
+  }
+
+  .c-turn-label + .c-turn-label {
+    margin-top: 1rem;
+  }
+
+  .c-who-mark {
+    color: var(--color-red-text);
+    margin-right: 0.375rem;
+  }
+
+  /* Node squares on the spine: red for turns already answered, gold
+     for the latest one (the .c-node-live state rides the call site;
+     rsl reversed the original spec's assignment 2026-11-14). Position
+     is rem-based so the A−/A+ root-font scaler moves the node with the
+     things it aligns to: centered on the spine's centerline (spine at
+     2rem + 1px half-width, node half 6px), and centered on the YOU
+     turn-label's text line (c-q's 1rem padding-top + half the
+     0.594rem/1.5 line box). Measured 2026-11-14: label center 23.0px
+     from the turn top at default scale. */
+  .c-node {
+    position: absolute;
+    left: calc(2rem + 1px - 6px);
+    top: calc(1.4453125rem - 6px);
+    width: 12px;
+    height: 12px;
+    background: var(--color-soviet);
+  }
+
+  .c-node-live {
+    background: var(--color-gold);
+  }
+
+  .c-question {
+    @apply whitespace-pre-wrap font-serif text-question;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    margin-bottom: 0.625rem;
+  }
+
+  .c-chip-group {
+    margin-top: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .c-tool-chip {
+    @apply font-mono not-italic text-kiosk;
+    font-size: 0.594rem;
+    letter-spacing: 0.03em;
+  }
+
+  .c-tool-chip + .c-tool-chip {
+    margin-top: 0.25rem;
+  }
+
+  .c-tool-chip em {
+    font-style: normal;
+    color: var(--color-newsprint-dim);
+  }
+
+  .c-answer {
+    @apply font-serif text-newsprint;
+    font-size: 0.9375rem;
+    line-height: 1.66;
+  }
+
+  .c-answer p + p {
+    margin-top: 0.5625rem;
+  }
+
+  .c-answer code {
+    @apply font-mono text-gold;
+    font-size: 0.72rem;
+    background: rgba(217, 164, 65, 0.08);
+    padding: 1px 4px;
+  }
+
+  .c-answer sup {
+    @apply pl-px font-mono text-red-text;
+    font-size: 0.5625rem;
+  }
+
+  /* The action line under an answer: an INVERTED Scotch rule on top —
+     lightline 2px, gap, kiosk @ 55% 1px. */
+  .c-stats-line {
+    @apply font-mono text-kiosk;
+    font-size: 0.5625rem;
+    letter-spacing: 0.05em;
+    margin-top: 0.625rem;
+    padding-top: 0.75rem;
+    background-image: linear-gradient(var(--color-lightline) 0 2px, transparent 2px 4px, rgba(168, 154, 125, 0.55) 4px 5px);
+    background-repeat: no-repeat;
+    background-position: top;
+    background-size: 100% 5px;
+  }
+
+  .c-stats-line a {
+    color: var(--color-kiosk);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+  }
+
+  .c-stats-line a:hover {
+    color: var(--color-newsprint);
+  }
+
+  /* ── The composer ─────────────────────────────────────────── */
+
+  /* The composer strip: press-dark with a top Scotch rule, sitting in
+     the transcript column — the sources well runs on beside it. */
+  .c-composer {
+    position: relative;
+    z-index: 10;
+    grid-column: 1;
+    grid-row: 2;
+    background-color: var(--color-press-dark);
+    background-image: linear-gradient(var(--color-lightline) 0 2px, transparent 2px 4px, rgba(168, 154, 125, 0.55) 4px 5px);
+    background-repeat: no-repeat;
+    background-position: top;
+    background-size: 100% 5px;
+  }
+
+  .c-cline {
+    @apply flex items-stretch bg-panel;
+    box-shadow:
+      inset 0 1px 0 rgba(241, 233, 212, 0.04),
+      inset 0 -2px 0 transparent;
+  }
+
+  /* The composer's armed state: the bar borrows the active mode button's
+      inset red underline when the input holds focus — autofocus reads
+      visually, not just as a caret. */
+  .c-cline:focus-within {
+    box-shadow:
+      inset 0 1px 0 rgba(241, 233, 212, 0.04),
+      inset 0 -2px 0 var(--color-soviet);
+  }
+
+  .c-attach {
+    @apply flex w-[2.125rem] flex-none cursor-pointer items-center justify-center border-none bg-transparent p-0 text-kiosk;
+    border-right: 1px solid rgba(74, 65, 48, 0.45);
+  }
+
+  .c-attach svg {
+    width: 0.8125rem;
+    height: 0.8125rem;
+  }
+
+  /* Font size stays unset here: the global input/textarea floor
+     (max(1rem, 16px)) must win — the frame's 13.5px would trip the
+     iOS focus zoom. */
+  .c-cline-input {
+    @apply min-w-0 flex-1 resize-none border-none bg-transparent font-serif text-newsprint outline-none;
+    line-height: 1.5;
+    padding: 0.5625rem 0.75rem 0.625rem;
+  }
+
+  .c-cline-input::placeholder {
+    color: var(--color-kiosk);
+  }
+
+  .c-modebtn {
+    /* Oswald like the Ask button, a step lighter and smaller — same
+       family, not the same weight: the Ask button is the loudest voice
+       in the strip. */
+    @apply flex flex-none cursor-pointer items-center border-none bg-transparent font-poster font-medium uppercase text-kiosk;
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    border-left: 1px solid rgba(74, 65, 48, 0.45);
+    padding: 0 0.75rem;
+  }
+
+  .c-modebtn.on {
+    color: var(--color-newsprint);
+    background: rgba(232, 67, 42, 0.16);
+    box-shadow: inset 0 -2px 0 var(--color-soviet);
+  }
+
+  .c-askbtn {
+    @apply flex flex-none cursor-pointer items-center border-none bg-soviet font-poster font-semibold uppercase text-newsprint;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    padding: 0 1.25rem;
+  }
+
+  .c-askbtn:hover {
+    background: var(--color-red-deep);
+  }
+
+  .c-staged-chip {
+    @apply flex items-center gap-2 bg-panel px-2 py-1.5 font-mono text-kiosk;
+    font-size: 0.594rem;
+  }
+
+  /* ── The rail ─────────────────────────────────────────────── */
+
+  .c-rail {
+    @apply relative z-10 flex h-full w-[190px] flex-none flex-col overflow-hidden bg-press-dark;
+    box-shadow: inset 1px 0 0 rgba(168, 154, 125, 0.22);
+    padding: 0.875rem 0.8125rem 1rem;
+  }
+
+  .c-rail-label {
+    @apply font-mono uppercase text-kiosk;
+    font-size: 0.5625rem;
+    letter-spacing: 0.14em;
+    margin-bottom: 0.5rem;
+  }
+
+  .c-idx {
+    @apply block border-l-2 border-transparent no-underline;
+    padding: 0.125rem 0.8125rem 0.375rem 0.6875rem;
+  }
+
+  .c-idx.on {
+    border-left-color: var(--color-soviet);
+    background: rgba(232, 67, 42, 0.1);
+  }
+
+  .c-idx-num {
+    @apply font-mono text-kiosk;
+    font-size: 0.53rem;
+    letter-spacing: 0.1em;
+  }
+
+  .c-idx.on .c-idx-num {
+    color: var(--color-newsprint);
+  }
+
+  .c-idx-title {
+    @apply block font-serif text-newsprint-dim;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    margin-top: 1px;
+  }
+
+  .c-idx.on .c-idx-title {
+    color: var(--color-newsprint);
+  }
+
+  .c-idx-meta {
+    @apply block font-mono text-kiosk;
+    font-size: 0.5rem;
+    margin-top: 2px;
+  }
+
+  /* The rail foot's top edge: the Scotch rule again, closing the rail
+     the way the sub-band opens the page. */
+  .c-rail-foot {
+    @apply mt-auto pt-[0.9375rem];
+    background-image: linear-gradient(var(--color-lightline) 0 2px, transparent 2px 4px, rgba(168, 154, 125, 0.55) 4px 5px);
+    background-repeat: no-repeat;
+    background-position: top;
+    background-size: 100% 5px;
+  }
+
+  .c-chip-row {
+    @apply flex items-baseline justify-between;
+  }
+
+  .c-chip-name {
+    @apply truncate font-poster font-medium uppercase text-newsprint;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+  }
+
+  .c-chip-dot {
+    color: var(--color-gold);
+  }
+
+  .c-rail-links {
+    @apply mt-2 flex gap-[0.6875rem];
+  }
+
+  .c-rail-link {
+    @apply font-mono uppercase text-kiosk no-underline;
+    font-size: 0.53rem;
+    letter-spacing: 0.08em;
+  }
+
+  .c-rail-link:hover {
+    color: var(--color-newsprint);
+  }
+
+  /* ── Shared twins carried over ────────────────────────────── */
+
+  /* The foreman's timestamped log <pre>: collapsed until the action
+     line's total time opens it — the toggle targets .c-turn-log and
+     flips hidden. Shared by the server render (turn_log_pre) and both
+     client renders. */
   .c-turn-log {
-    @apply mt-2 whitespace-pre-wrap border-l-2 border-soviet/40 pl-2 text-xs leading-relaxed text-neutral-500;
+    @apply mt-2 whitespace-pre-wrap border-l-2 border-red-deep/40 pl-2 font-mono text-kiosk;
+    font-size: 0.594rem;
+    line-height: 1.7;
+  }
+
+  /* The attachment strip a user turn carries — the staged copies. Shared
+     by the server render (attachment_strip) and the stream reader's
+     attachmentStripHtml; image-strip rides alongside as the structural
+     hook the lightbox navigates by. (2026-11-07) */
+  .c-attachment-strip {
+    @apply mb-3 mt-1 flex gap-2 overflow-x-auto;
+  }
+
+  /* Interim narrow viewport (slice 3 rebuilds this against the phone
+     frame): the well and its column retire, exchanges run single-column,
+     and note cards flow under their answers. */
+  @media (max-width: 639px) {
+    .c-sheet {
+      right: 0;
+    }
+
+    .c-sources-well,
+    .c-head-sources {
+      display: none;
+    }
+
+    .c-desk,
+    .c-cols,
+    .c-turn {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .c-note {
+      grid-column: 1;
+      grid-row: auto;
+      margin: 0 1.75rem 1.125rem 4rem;
+    }
+
+    /* The sheet spans full width here, so the greeting/gate margin that
+       centers them on the sheet column drops to 0. */
+    .greeting,
+    .enlist-card {
+      margin-right: 0;
+    }
   }
 }
 
@@ -40,14 +603,6 @@
    this height must never lose to a call-site utility. */
 .c-shell {
   height: var(--shell-height, 100%);
-}
-
-/* The attachment strip a user turn carries — the staged copies. Shared
-   by the server render (attachment_strip) and the stream reader's
-   attachmentStripHtml; image-strip rides alongside as the structural
-   hook the lightbox navigates by. (2026-11-07) */
-.c-attachment-strip {
-  @apply mt-1 mb-3 flex gap-2 overflow-x-auto;
 }
 
 /* iOS Safari auto-zooms the visual viewport on focus when the focused

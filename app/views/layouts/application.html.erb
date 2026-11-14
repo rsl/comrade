@@ -19,103 +19,120 @@
         whole ask behind one GET to /search. %>
     <%= tag.link rel: 'search', type: 'application/opensearchdescription+xml', title: 'Comrade', href: opensearch_path %>
 
+    <%# The Ledger's three voices: Oswald for the poster, Source Serif 4
+        for everything a reader reads, JetBrains Mono for the press's
+        small furniture. %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
     <%# Restores the saved root font size before first paint (see font_scale_boot.js and the font-sizer controller). %>
     <%= javascript_include_tag 'font_scale_boot' %>
-    <%= javascript_include_tag 'sidebar_width_boot' %>
     <%= javascript_include_tag 'visual_viewport_boot' %>
     <%= stylesheet_link_tag :tailwind, "data-turbo-track": 'reload' %>
     <%= javascript_importmap_tags %>
   </head>
 
-  <%# App shell: fixed inset-0 frames — the document never scrolls, so none of
-    the iOS viewport-unit states (URL bar × keyboard × accessory) can produce
-    dead scroll, pan-on-focus, or scroll carry across the post-first-reply
-    Turbo.visit. The transcript panel scrolls internally. (2026-10-24)
-    The sidebar is part of the gate: a tokenless browser on the new-chat
-    surface gets only the enlist card until it chooses — "stay in the
-    commune" reveals the sidebar client-side along with the composer. %>
+  <%# App shell: fixed inset frame — the document never scrolls, so none of
+      the iOS viewport-unit states (URL bar × keyboard × accessory) can
+      produce dead scroll, pan-on-focus, or scroll carry across the
+      post-first-reply Turbo.visit. The transcript panel scrolls internally.
+      The masthead opens every page: the poster band, then the sub-band
+      whose bottom edge is the Scotch rule. The rail (recents + identity)
+      is the desk's third column; the drawer behavior survives on narrow
+      viewports, flipped to slide from the right. The gate hides the rail
+      and the ☰ until the reader chooses — "stay in the commune" reveals
+      them client-side along with the composer. %>
   <% gated = current_enlistee.blank? && request.path.in?([root_path, conversations_path]) %>
-  <body class="bg-ground text-neutral-200 antialiased overflow-hidden" data-controller="sidebar-drawer lightbox" data-action="keydown->lightbox#keydown">
-    <%# Narrow viewports: the ☰ summons the sidebar as an overlay drawer;
-        a tap outside or on a conversation dismisses it. The ☰ hides
-        while the drawer is open — scrim tap and swipe are the exits.
-        Desktop never sees either — the sidebar is persistent there. %>
+  <% edition_word = Time.current.hour < 12 ? 'morning edition' : Time.current.hour < 18 ? 'afternoon edition' : 'evening edition' %>
+  <body class="c-beyond font-serif text-newsprint-dim antialiased overflow-hidden" data-controller="sidebar-drawer lightbox" data-action="keydown->lightbox#keydown">
+    <%# Narrow viewports: the ☰ summons the rail as an overlay drawer from
+        the right; a tap outside or on a conversation dismisses it. The ☰
+        hides while the drawer is open — scrim tap and swipe are the exits.
+        Desktop never sees either — the rail is persistent there. %>
     <%= tag.button '☰', aria: { label: 'Conversations' }, data: { 'sidebar-drawer-target': 'toggle', action: 'sidebar-drawer#toggle' },
-          class: class_names('sm:hidden fixed left-3 top-3 z-30 cursor-pointer rounded bg-soviet/20 px-2 py-1 text-sm leading-none text-neutral-300 hover:bg-soviet/50', 'hidden': gated) %>
-    <div class="c-shell fixed left-0 right-0 top-0 flex flex-row-reverse" data-controller="sidebar-resize">
-      <%# The backdrop lives inside the shell: iOS Safari gives position:fixed
-          elements their own stacking context, so a body-level backdrop would
-          paint over the whole shell — drawer included (2026-10-24, "unviewably
-          dark" on iPhone). Inside, the drawer's z-20 outranks it everywhere. %>
-      <div data-sidebar-drawer-target="backdrop" class="fixed inset-0 z-10 hidden bg-black/60 sm:hidden"></div>
-      <%= tag.aside class: class_names('flex h-full w-[var(--sidebar-width,240px)] shrink-0 flex-col overflow-y-auto bg-ground-raised px-[16px] py-[20px]', 'hidden': gated, 'max-sm:fixed max-sm:inset-y-0 max-sm:left-0 max-sm:z-20 max-sm:w-[min(300px,85vw)] max-sm:-translate-x-full max-sm:transition-transform max-sm:duration-200 max-sm:shadow-2xl': true), 'data-gate-sidebar': true, 'data-sidebar-drawer-target': 'drawer', 'data-sidebar-resize-target': 'aside' do %>
-        <%# On narrow viewports this drawer opens over the content; on
-            desktop it is the persistent sidebar. Same partials, two
-            presentations. %>
-        <div class="mb-2 flex items-center justify-between">
-          <%= link_to 'Comrade', root_path, class: 'text-lg font-semibold tracking-tight text-gold' %>
-          <%= link_to '+ New', root_path, title: 'New conversation', class: 'rounded bg-soviet/20 px-2 py-0.5 text-xs text-neutral-400 hover:text-neutral-100 hover:bg-soviet/50' %>
-        </div>
-
-        <%# Navigation first: conversations are what the sidebar is for. %>
-        <%# Recents carry iOS-style list management: "Edit" flips the list into archive mode — rows grow a minus control. Archiving removes the row in place via Turbo Stream, so edit mode survives multi-archive; only archiving the conversation you're viewing falls back to a redirect. %>
-        <section data-controller="sidebar-edit" class="mt-4">
-          <div class="mb-2 flex items-baseline justify-between">
-            <h2 class="text-xs font-medium uppercase tracking-wide text-neutral-500">Recent</h2>
-            <button type="button" data-sidebar-edit-target="toggle" data-action="sidebar-edit#toggle" class="cursor-pointer text-xs text-neutral-500 hover:text-neutral-200">Edit</button>
+          class: class_names('sm:hidden fixed right-3 top-3 z-30 cursor-pointer bg-press-dark px-2 py-1 font-mono text-sm leading-none text-kiosk', 'hidden': gated) %>
+    <div class="c-shell relative flex w-full flex-col">
+      <header class="c-mast-band">
+        <%= link_to root_path, class: 'c-poster' do %>
+          <span>Comrade</span>
+          <svg class="c-poster-star" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
+        <% end %>
+        <%# The reserved title row's heir: a fresh chat reads the date and
+            edition; a show page reads the conversation's working title —
+            the stream reader fills it there (fresh pages only). %>
+        <span id="edition-band" class="c-edition-band"><%= content_for?(:edition) ? yield(:edition) : "#{ Date.current.strftime('%a %b %-d') } · #{ edition_word }" %></span>
+      </header>
+      <div class="c-mast-sub">
+        <p class="c-tagline">Seize the means of information retrieval.</p>
+        <nav class="ml-auto flex items-baseline gap-3 overflow-hidden" aria-label="Editions">
+          <%= yield :editions %>
+          <div class="c-ed-right">
+            <%= link_to '+ new', root_path, title: 'New conversation', class: 'c-ed-link' %>
+            <%= link_to 'all', all_conversations_path, class: 'c-ed-link' %>
+            <% if Conversation.archived.for_enlistee(current_enlistee).exists? %>
+              <%= link_to 'archived', archived_conversations_path, class: 'c-ed-link' %>
+            <% end %>
           </div>
-          <ul class="space-y-0.5">
-            <% Conversation.live.for_enlistee(current_enlistee).order(id: :desc).limit(20).each do |conversation| %>
-              <%= tag.li id: dom_id(conversation), class: 'flex items-center gap-1' do %>
-                <%= link_to conversation.title.presence || '(Untitled)', conversation_path(conversation), data: { action: 'sidebar-drawer#navigate' }, class: "grow truncate text-sm leading-snug before:mr-2 before:text-gold before:content-['•'] #{ request.path == conversation_path(conversation) ? 'text-neutral-100' : 'text-neutral-400 hover:text-neutral-200' }" %>
-                <%# No minus for the conversation you're in: archiving it would yank the page out from under you. Leave first, then archive. %>
+        </nav>
+      </div>
+      <div class="flex min-h-0 flex-1">
+        <%# The backdrop lives inside the shell: iOS Safari gives position:fixed
+            elements their own stacking context, so a body-level backdrop would
+            paint over the whole shell — drawer included. Inside, the drawer's
+            z-20 outranks it everywhere. %>
+        <div data-sidebar-drawer-target="backdrop" class="fixed inset-0 z-10 hidden bg-black/60 sm:hidden"></div>
+        <main class="relative flex min-w-0 flex-1 flex-col">
+          <%= yield %>
+        </main>
+        <%= tag.aside class: class_names('c-rail', 'hidden': gated, 'max-sm:fixed max-sm:inset-y-0 max-sm:right-0 max-sm:z-20 max-sm:w-[min(300px,85vw)] max-sm:translate-x-full max-sm:shadow-2xl': true),
+              'data-gate-sidebar': true, 'data-sidebar-drawer-target': 'drawer', data: { controller: 'sidebar-edit' } do %>
+          <%# Recents carry iOS-style list management: "Edit" flips the list
+              into archive mode — rows grow a × control. Archiving removes
+              the row in place via Turbo Stream, so edit mode survives
+              multi-archive; only archiving the conversation you're viewing
+              falls back to a redirect (and there is no minus for it at all). %>
+          <div class="mb-2 flex items-baseline justify-between">
+            <span class="c-rail-label mb-0">Recent</span>
+            <button type="button" data-sidebar-edit-target="toggle" data-action="sidebar-edit#toggle" class="c-rail-link cursor-pointer">Edit</button>
+          </div>
+          <nav class="-mx-[0.8125rem] min-h-0 flex-1 overflow-y-auto" aria-label="Recent conversations">
+            <% Conversation.live.for_enlistee(current_enlistee).order(id: :desc).limit(20).each_with_index do |conversation, index| %>
+              <%= tag.div id: dom_id(conversation), class: 'flex items-start' do %>
+                <%= link_to conversation_path(conversation), data: { action: 'sidebar-drawer#navigate' },
+                      class: class_names('c-idx min-w-0 grow', 'on': request.path == conversation_path(conversation)) do %>
+                  <span class="c-idx-num"><%= format('%02d', index + 1) %></span>
+                  <span class="c-idx-title"><%= conversation.title.presence || '(Untitled)' %></span>
+                  <span class="c-idx-meta"><%= conversation.created_at.strftime('%a') %> · <%= conversation.messages.count %> turns</span>
+                <% end %>
+                <%# No × for the conversation you're in: archiving it would
+                    yank the page out from under you. Leave first, then archive. %>
                 <% if request.path != conversation_path(conversation) %>
-                  <%= link_to '−', archive_conversation_path(conversation), title: 'Archive', data: { turbo_method: :patch, sidebar_edit_target: 'archive' }, class: 'hidden shrink-0 cursor-pointer rounded-full bg-soviet/20 px-1.5 text-sm leading-tight text-neutral-400 hover:bg-soviet/50 hover:text-neutral-100' %>
+                  <%= link_to '×', archive_conversation_path(conversation), title: 'Archive',
+                        data: { turbo_method: :patch, sidebar_edit_target: 'archive' },
+                        class: 'hidden shrink-0 cursor-pointer px-1 pt-1 font-mono text-[0.594rem] text-kiosk hover:text-red-text' %>
                 <% end %>
               <% end %>
             <% end %>
-          </ul>
-        </section>
-
-        <div class="mb-2 mt-3 flex items-baseline justify-between">
-            <%= link_to 'All', all_conversations_path, class: 'text-xs text-neutral-500 hover:text-gold' %>
-            <% if Conversation.archived.for_enlistee(current_enlistee).exists? %>
-              <%= link_to 'Archived', archived_conversations_path, class: 'text-xs text-neutral-500 hover:text-gold' %>
-            <% end %>
-          </div>
-
-        <%# Identity closes the sidebar: who you are, how comrade talks to
-            you, and the text size — the personal cluster, pinned down. %>
-        <div class="mt-auto pt-3">
-          <%= render 'layouts/identity', identity_changed: @identity_changed %>
-
-          <%# The font sizer anchors the sidebar's bottom corner. Its buttons
-              are px-pinned and edge-aligned: chrome, not content — root-font
-              scaling must never move a click target out from under the
-              cursor. %>
-          <div class="pt-3">
-            <span data-controller="font-sizer" class="flex items-center justify-between text-neutral-500">
-              <button data-action="font-sizer#smaller" aria-label="Smaller text" class="h-[28px] w-[36px] cursor-pointer rounded bg-soviet/20 text-[13px] leading-none text-neutral-500 hover:text-neutral-200 hover:bg-soviet/50">A−</button>
-              <button data-action="font-sizer#larger" aria-label="Larger text" class="h-[28px] w-[36px] cursor-pointer rounded bg-soviet/20 text-[13px] leading-none text-neutral-500 hover:text-neutral-200 hover:bg-soviet/50">A+</button>
+          </nav>
+          <%# Identity closes the rail: who you are, how comrade talks to
+              you, and the text size — the personal cluster, pinned down. %>
+          <div class="c-rail-foot">
+            <%= render 'layouts/identity', identity_changed: @identity_changed %>
+            <%# The font sizer anchors the rail's foot. Its buttons are mono
+                links: chrome, not content — root-font scaling must never
+                move a click target out from under the cursor. %>
+            <span data-controller="font-sizer" class="c-rail-links">
+              <button data-action="font-sizer#smaller" aria-label="Smaller text" class="c-rail-link cursor-pointer">A−</button>
+              <button data-action="font-sizer#larger" aria-label="Larger text" class="c-rail-link cursor-pointer">A+</button>
             </span>
           </div>
-        </div>
-      <% end %>
-
-      <%# The divider between content and sidebar drag-resizes the aside on
-          sm+ (iPad landscape and desktop) — see
-          sidebar_resize_controller.js. A faint always-visible hairline
-          (iPadOS often doesn't match hover: hover), tinting on hover
-          where that exists. It rides the gate: hidden until the reader
-          chooses, and max-sm:hidden structurally — narrow viewports
-          never see it. %>
-      <div data-sidebar-resize-target="divider" data-gate-sidebar="true"
-           data-action="pointerdown->sidebar-resize#drag dblclick->sidebar-resize#reset"
-           class="<%= class_names("max-sm:hidden relative w-[8px] shrink-0 cursor-col-resize touch-none select-none bg-white/5 hover:bg-soviet/40 after:absolute after:inset-y-0 after:left-[-8px] after:right-[-8px] after:content-['']", 'hidden': gated) %>"></div>
-
-      <main class="flex h-full min-w-0 flex-1 flex-col">
-        <%= yield %>
-      </main>
+        <% end %>
+      </div>
     </div>
+    <%# The focus-debug observer was removed with the iPad autofocus
+        hunt's close (2026-11-14): the failure is Firefox for iOS
+        failing to activate load-time autofocus — see
+        .agent-notes/handoff-rsl-image-attachments.md. %>
   </body>
 </html>

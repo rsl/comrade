@@ -1,10 +1,10 @@
 import { Controller } from "@hotwired/stimulus"
 
-// The sidebar is a persistent column on desktop and an overlay drawer on
-// narrow viewports: the ☰ toggle slides it in, a tap outside or on a
-// conversation slides it out, and a leftward swipe dismisses it. All
-// movement is the translate class under max-sm — desktop never moves,
-// because none of these classes apply there.
+// The rail is a persistent column on desktop and an overlay drawer on
+// narrow viewports: the ☰ toggle slides it in from the right, a tap
+// outside or on a conversation slides it out, and a rightward swipe
+// dismisses it. All movement is the translate class under max-sm —
+// desktop never moves, because none of these classes apply there.
 export default class extends Controller {
   static targets = ["toggle", "drawer", "backdrop"]
 
@@ -38,7 +38,7 @@ export default class extends Controller {
   }
 
   toggle() {
-    this.drawerTarget.classList.toggle("max-sm:-translate-x-full")
+    this.drawerTarget.classList.toggle("max-sm:translate-x-full")
     this.backdropTarget.classList.toggle("hidden")
     // The ☰ opens the drawer; while it's open it would sit dimmed under
     // the scrim at the drawer's edge, looking like a dead button — hide
@@ -47,7 +47,7 @@ export default class extends Controller {
   }
 
   close() {
-    this.drawerTarget.classList.add("max-sm:-translate-x-full")
+    this.drawerTarget.classList.add("max-sm:translate-x-full")
     this.backdropTarget.classList.add("hidden")
     this.toggleTarget.classList.remove("hidden")
   }
@@ -65,7 +65,7 @@ export default class extends Controller {
   swipeStart(event) {
     if (event.touches.length !== 1) return
     if (window.matchMedia("(min-width: 640px)").matches) return
-    if (this.drawerTarget.classList.contains("max-sm:-translate-x-full")) return
+    if (this.drawerTarget.classList.contains("max-sm:translate-x-full")) return
     const touch = event.touches[0]
     this.swipe = { x: touch.clientX, y: touch.clientY, dx: 0, claimed: false }
   }
@@ -83,7 +83,7 @@ export default class extends Controller {
       this.drawerTarget.style.transition = "none"
     }
     // The drawer follows the finger, clamped at its open position.
-    swipe.dx = Math.min(0, dx)
+    swipe.dx = Math.max(0, dx)
     this.drawerTarget.style.transform = `translateX(${swipe.dx}px)`
     event.preventDefault()
   }
@@ -96,6 +96,6 @@ export default class extends Controller {
     this.drawerTarget.style.transform = ""
     // A cancelled gesture (system interrupt) never dismisses.
     if (event.type === "touchcancel") return
-    if (swipe.dx < -60) this.close()
+    if (swipe.dx > 60) this.close()
   }
 }

@@ -22,7 +22,7 @@ module ConversationsHelper
       if clickable
         tag.span(
           total,
-          class: 'cursor-pointer hover:text-neutral-300',
+          class: 'cursor-pointer hover:text-newsprint',
           data: { action: 'click->stream-reader#toggleTurnLog' },
         )
       else
@@ -99,18 +99,6 @@ module ConversationsHelper
     render 'message', message:, tool_notes:, double_check:, break_down:, turn_log:
   end
 
-  # The id of the conversation's most recent memory answer - the only turn
-  # whose "double check" link has an unambiguous target. On older turns the
-  # canned verification question would land after the full transcript and
-  # point at whatever answer came last, so the link renders on the latest
-  # memory answer alone.
-  def double_check_id(messages)
-    latest = messages.reverse.detect do |turn|
-      turn.role == 'assistant' && turn.citations.blank? && turn.tool_payload.blank?
-    end
-    latest&.id
-  end
-
   # The id of the conversation's most recent answer with content — the
   # only turn whose "break it down" link has a target ("break that down"
   # is conversation-wide; two links would be two guesses). Rides search
@@ -141,39 +129,46 @@ module ConversationsHelper
     "Week of #{ date.beginning_of_week.strftime('%b %-d') }"
   end
 
-  # One transcript turn: a message plus the tool chips that answer into
-  # it. Consecutive tool rows group into the following non-tool message; a
-  # tool_calls frame with no spoken content renders nothing and must not
-  # flush the chips pending for the answering turn. Tools trailing with no
-  # answer become their own bare turns (the partial's stray-row branch
-  # renders them).
-  # rubocop:disable-next Metrics/MethodLength — one coherent scan; splitting
-  # it would hide the grouping shape behind indirection.
+  # One exchange of the ledger transcript: a user turn, the tool rows
+  # that answer into it, and the assistant answer (nil while pending).
+  # `note` carries the exchange's margin-note number (nil when the
+  # exchange renders no note). Consecutive tool rows group into the
+  # following non-tool message; a tool_calls frame with no spoken content
+  # renders nothing and must not flush the chips pending for the
+  # answering turn. Tools trailing with no answer become their own bare
+  # exchange (the stray branch renders them).
+  # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity — one coherent scan; splitting it would hide the grouping shape behind indirection.
   # :reek:TooManyStatements — the grouping walk is one coherent scan.
-  def grouped_turns(messages)
-    turns = []
+  def grouped_exchanges(messages)
+    exchanges = []
     pending = []
+    open = nil
+    noted = 0
     messages.each do |message|
       if message.role == 'tool'
         pending << message
       elsif message.role == 'assistant' && message.tool_payload.present? && message.content.blank?
         # Nothing spoken: render nothing, keep chips pending.
-      else
-        turns << [message, pending]
+      elsif message.role == 'user'
+        open = { user: message, answer: nil, tools: pending, note: nil }
         pending = []
+        exchanges << open
+      elsif open && open[:answer].nil?
+        open[:answer] = message
+        open[:tools] += pending
+        pending = []
+        noted += 1
+        open[:note] = noted
+      else
+        open = { user: nil, answer: message, tools: pending, note: nil }
+        pending = []
+        noted += 1
+        open[:note] = noted
+        exchanges << open
       end
     end
-    pending.each { |tool| turns << [tool, []] }
-    turns
+    pending.each { |tool| exchanges << { user: nil, answer: nil, tools: [tool], note: nil } }
+    exchanges
   end
-
-  # The quiet chip text for a tool row: what comrade did, in prose.
-  def tool_note(tool)
-    case tool.tool_name
-    when 'web_search' then "searched for #{ tool.tool_payload['arguments']['query'] }"
-    when 'image_search' then "searched images for #{ tool.tool_payload['arguments']['query'] }"
-    when 'read_image' then "read image #{ tool.tool_payload['arguments']['key'] }"
-    else "fetched #{ tool.tool_payload['arguments']['url'] }"
-    end
-  end
+  # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
 end

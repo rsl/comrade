@@ -110,9 +110,9 @@ export default class extends Controller {
     this.image.className = "max-h-[85vh] max-w-full rounded object-contain"
     this.image.alt = ""
     this.counter = document.createElement("p")
-    this.counter.className = "text-xs text-neutral-500"
+    this.counter.className = "font-mono text-xs text-kiosk"
     this.caption = document.createElement("p")
-    this.caption.className = "max-w-full truncate text-xs text-neutral-400"
+    this.caption.className = "max-w-full truncate font-serif text-xs text-newsprint-dim"
     this.overlay.append(this.prevButton, this.nextButton, this.image, this.counter, this.caption)
     this.element.append(this.overlay)
   }
@@ -129,8 +129,8 @@ export default class extends Controller {
     button.textContent = glyph
     button.ariaLabel = action === "next" ? "Next image" : "Previous image"
     button.className = side === "left"
-      ? "absolute inset-y-0 left-0 flex w-24 items-center justify-center cursor-pointer text-5xl leading-none text-neutral-500 hover:text-neutral-100"
-      : "absolute inset-y-0 right-0 flex w-24 items-center justify-center cursor-pointer text-5xl leading-none text-neutral-500 hover:text-neutral-100"
+      ? "absolute inset-y-0 left-0 flex w-24 items-center justify-center cursor-pointer text-5xl leading-none text-kiosk hover:text-newsprint"
+      : "absolute inset-y-0 right-0 flex w-24 items-center justify-center cursor-pointer text-5xl leading-none text-kiosk hover:text-newsprint"
     button.dataset.action = `click->lightbox#${action}`
     return button
   }

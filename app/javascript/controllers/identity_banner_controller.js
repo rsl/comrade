@@ -21,14 +21,14 @@ export default class extends Controller {
     const banner = document.createElement('div')
     banner.className = [
       'fixed left-0 right-0 top-0 z-50 flex items-center justify-between gap-2',
-      'bg-soviet px-4 py-2 text-sm text-neutral-100',
+      'bg-soviet px-4 py-2 font-serif text-sm text-newsprint',
     ].join(' ')
     const text = document.createElement('span')
-    text.textContent = `now ${ current } (was ${ previous }) — not you? Step out in the sidebar`
+    text.textContent = `now ${ current } (was ${ previous }) — not you? Step out in the rail`
     const dismiss = document.createElement('button')
     dismiss.type = 'button'
     dismiss.textContent = '×'
-    dismiss.className = 'cursor-pointer text-lg leading-none hover:text-white'
+    dismiss.className = 'cursor-pointer text-lg leading-none hover:text-newsprint'
     dismiss.addEventListener('click', () => banner.remove())
     banner.append(text, dismiss)
     document.body.prepend(banner)

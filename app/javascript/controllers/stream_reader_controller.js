@@ -12,7 +12,7 @@ import { marked } from "marked"
 // names it, later exchanges post to its messages endpoint, and the first
 // completed stream visits the conversation's permanent address.
 export default class extends Controller {
-  static targets = ["form", "transcript", "title", "gate", "greeting", "webMode", "imageMode", "fileInput", "staged", "dropOverlay"]
+  static targets = ["form", "transcript", "gate", "greeting", "webMode", "imageMode", "fileInput", "staged", "dropOverlay", "composer"]
   static values = { endpoint: String, fresh: Boolean, keepSimple: Boolean, pending: Boolean, pendingContent: String }
 
   // The in-flight request, abortable, and the partial answer text it has
@@ -55,6 +55,13 @@ export default class extends Controller {
   // reverts to all on send, like the composer clearing; a retry replays
   // the failed turn's mode.
   imageMode = false
+  // One-shot handoff from the fresh chat's first send (see connect's
+  // marker branch): consume-and-clear, 30s shelf life.
+  takeComposerFocusMarker() {
+    const stamp = Number(sessionStorage.getItem("comrade:focus-composer"))
+    sessionStorage.removeItem("comrade:focus-composer")
+    return stamp && Date.now() - stamp < 30000
+  }
   // Staged attachments: what the next send carries. Each entry is
   // {data, full, width, height, fullWidth, fullHeight, sourceUrl} —
   // data URLs and dimensions, `full` present only when staging shrank
@@ -97,10 +104,53 @@ export default class extends Controller {
     // Only the landing grabs focus; opening an old conversation to read it
     // shouldn't steal focus (or pop the keyboard accessory bar). The gate
     // holds the composer hidden, so nothing to focus until it's revealed.
-    if (this.freshValue && !this.formTarget.classList.contains("hidden")) this.formTarget.elements.content.focus()
+    if (this.freshValue && !this.composerTarget.classList.contains("hidden")) {
+      const field = this.formTarget.elements.content
+      // Firefox for iOS fails to activate load-time autofocus: the
+      // element takes DOM focus (activeElement confirmed, focus events
+      // logged) but never becomes really focused — no caret, keys
+      // unroute — until the reader taps it. Safari on the same device
+      // and URL activates the same load fine, so the fault is Firefox
+      // iOS's focus handling, not this code (on-device, 2026-11-14).
+      // The blur-then-focus forces a fresh claim — the native autofocus
+      // attribute usually wins the race to connect, and re-focusing an
+      // already-focused element is a no-op. Desktop pays an invisible
+      // blur/refocus round-trip for it.
+      if (document.activeElement === field) field.blur()
+      field.focus()
+      // Escalating fresh claims (rAF, 200ms): each re-claims if the
+      // composer still holds focus — cheap on desktop, and the only
+      // remaining hope on device is that a later claim lands inside a
+      // still-open activation window. Both skip if the reader has
+      // already focused something else (2026-11-14, iPad report).
+      requestAnimationFrame(() => { if (document.activeElement === field) { field.blur(); field.focus() } })
+      setTimeout(() => { if (document.activeElement === field) { field.blur(); field.focus() } }, 200)
+    } else if (this.takeComposerFocusMarker()) {
+      // Arrived from a fresh chat's first send (the visit stamped a marker
+      // before Turbo.visit). The swap replaced the focused composer's DOM,
+      // so the focus the send held is gone — hand it back for the
+      // follow-up. Ordinary opens of old conversations carry no marker
+      // and never get grabbed, and stale markers die in 30s.
+      this.formTarget.elements.content.focus()
+    }
+    // Tab with nothing focused: WebKit can hold DOM focus invisibly (the
+    // iPad bug this branch hunts), leaving the reader stranded with
+    // nowhere for Tab to go. A Tab seen with body/null owning focus
+    // claims the composer instead; when a link or button owns focus,
+    // normal traversal proceeds untouched.
+    this.onKeydown = (event) => {
+      if (event.key !== "Tab") return
+      const active = document.activeElement
+      const stranded = active === document.body || active === null || active === document.documentElement
+      if (stranded && !this.composerTarget.classList.contains("hidden")) {
+        event.preventDefault()
+        this.composerTarget.focus()
+      }
+    }
+    document.addEventListener("keydown", this.onKeydown)
     this.fitPlaceholder()
     this.element.insertAdjacentHTML("beforeend",
-      '<button type="button" data-action="stream-reader#jumpToLatest" class="jump-latest fixed bottom-28 right-64 z-20 hidden cursor-pointer rounded-full bg-soviet/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-soviet/60">↓ latest</button>')
+      '<button type="button" data-action="stream-reader#jumpToLatest" class="jump-latest fixed bottom-24 right-[13rem] z-20 hidden cursor-pointer rounded-full border border-hairline bg-panel px-3 py-1.5 font-mono text-[0.594rem] text-kiosk hover:text-newsprint">↓ latest</button>')
     // The server marked this conversation's last user turn unanswered —
     // a search-handoff GET that booted the turn, or a reload mid-stream.
     // Resume it now; the server's retry case makes the resume idempotent.
@@ -136,6 +186,7 @@ export default class extends Controller {
 
   disconnect() {
     this.transcriptTarget.removeEventListener("scroll", this.onScroll)
+    document.removeEventListener("keydown", this.onKeydown)
     this.element.removeEventListener("dragover", this.onDragOver)
     this.element.removeEventListener("dragleave", this.onDragLeave)
     this.element.removeEventListener("drop", this.onDrop)
@@ -231,7 +282,7 @@ export default class extends Controller {
   showStageNote(text) {
     this.stageNote?.remove()
     this.stageNote = document.createElement("p")
-    this.stageNote.className = "grow basis-full text-xs text-red-400"
+    this.stageNote.className = "grow basis-full font-mono text-[0.594rem] text-red-text"
     this.stageNote.textContent = text
     this.stagedTarget.append(this.stageNote)
     this.stagedTarget.classList.remove("hidden")
@@ -243,13 +294,12 @@ export default class extends Controller {
     box.replaceChildren()
     this.staged.forEach((image, index) => {
       const chip = document.createElement("div")
-      chip.className = "flex items-center gap-2 rounded-lg bg-neutral-300 px-2 py-1.5"
+      chip.className = "c-staged-chip"
       const thumb = document.createElement("img")
       thumb.src = image.data
       thumb.alt = ""
-      thumb.className = "h-10 w-auto rounded"
+      thumb.className = "h-10 w-auto"
       const label = document.createElement("span")
-      label.className = "text-xs text-neutral-500"
       label.textContent = image.full
         ? `${image.width}×${image.height} (from ${image.fullWidth}×${image.fullHeight})`
         : `${image.width}×${image.height}`
@@ -257,7 +307,7 @@ export default class extends Controller {
       remove.type = "button"
       remove.textContent = "×"
       remove.setAttribute("aria-label", "Remove attachment")
-      remove.className = "cursor-pointer px-1 text-sm text-neutral-500 hover:text-neutral-900"
+      remove.className = "cursor-pointer px-1 text-kiosk hover:text-newsprint"
       remove.addEventListener("click", () => {
         this.staged.splice(index, 1)
         this.renderStaged()
@@ -335,16 +385,13 @@ export default class extends Controller {
     this.renderModeSwitch()
   }
 
-  // The active segment is heavier, the inactive one recedes — the bar
-  // behind both stays unified. Class twins of _chat.html.erb's switch.
+  // The active mode reads newsprint on the red wash with the inset red
+  // underline; the inactive one recedes to kiosk. Class twins of
+  // _chat.html.erb's switch.
   renderModeSwitch() {
     if (!this.hasWebModeTarget) return
-    this.webModeTarget.className = this.imageMode
-      ? "px-3 text-sm leading-snug text-neutral-500"
-      : "px-3 text-sm leading-snug font-medium text-neutral-900"
-    this.imageModeTarget.className = this.imageMode
-      ? "px-3 text-sm leading-snug font-medium text-neutral-900"
-      : "px-3 text-sm leading-snug text-neutral-500"
+    this.webModeTarget.className = this.imageMode ? "c-modebtn" : "c-modebtn on"
+    this.imageModeTarget.className = this.imageMode ? "c-modebtn on" : "c-modebtn"
   }
 
   async submit(event) {
@@ -455,8 +502,13 @@ export default class extends Controller {
     // when steered, the exchange that carries the interruption) ends with
     // a Turbo visit to the conversation's permanent address. On a show
     // page exchanges append in place. An upstream error ends the stream
-    // without completion, so it never visits.
-    if (completed && this.freshValue) Turbo.visit(this.conversationUrl)
+    // without completion, so it never visits. The marker tells the show
+    // page's connect() to hand focus back — this swap replaces the
+    // composer's DOM, so the focus this send held dies here otherwise.
+    if (completed && this.freshValue) {
+      sessionStorage.setItem("comrade:focus-composer", String(Date.now()))
+      Turbo.visit(this.conversationUrl)
+    }
   }
 
   // A failed turn offers a one-click resend. The retry is a steer: the
@@ -468,7 +520,7 @@ export default class extends Controller {
     this.failed = { content, interrupted, mode, images }
 
     const line = document.createElement("p")
-    line.className = "retry-line mt-2 text-xs text-red-400"
+    line.className = "retry-line mt-2 font-mono text-[0.594rem] text-red-text"
     line.append(reason ? `reply failed — ${reason} — ` : "reply failed — ")
     const link = document.createElement("a")
     link.href = "#"
@@ -491,21 +543,46 @@ export default class extends Controller {
     this.clearRetries()
     const { content, interrupted, mode, images } = this.failed
 
-    // The retried answer arrives as a fresh assistant turn below the
-    // failed one; the user turn is already on the page and in the DB.
-    this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
-    const turns = this.transcriptTarget.querySelectorAll("article")
-    const answer = turns[turns.length - 1]
+    // The retried answer arrives as a fresh assistant turn inside the
+    // failed exchange's answer stack; the user turn is already on the
+    // page and in the DB.
+    const wrap = this.answerWrap()
+    wrap.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
+    const articles = wrap.querySelectorAll("article")
+    const answer = articles[articles.length - 1]
     this.contentEl = answer.querySelector("div")
 
     await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null, mode, images })
+  }
+
+  // The answer stack of the transcript's last exchange — where a retried
+  // or resumed answer lands. A missing stack (a transcript the server
+  // rendered without one) gets created.
+  answerWrap() {
+    const turns = this.transcriptTarget.querySelectorAll(".c-turn")
+    const shell = turns[turns.length - 1]
+    if (shell) {
+      let wrap = shell.querySelector(".c-a-wrap")
+      if (!wrap) {
+        wrap = document.createElement("div")
+        wrap.className = "c-a-wrap"
+        shell.append(wrap)
+      }
+      return wrap
+    }
+    const cols = this.ensureHeads()
+    const fresh = document.createElement("div")
+    fresh.className = "c-turn"
+    fresh.innerHTML = '<div class="c-a-wrap"></div>'
+    cols.append(fresh)
+    return fresh.querySelector(".c-a-wrap")
   }
 
   // The pending-turn resume: the user turn is server-rendered and
   // persisted (a dead stream's, or one booted by the /search GET), so the
   // resume always rides the retry path — the server matches the turn to
   // its row on the exact content and never double-persists. The answer
-  // arrives as a fresh assistant turn below the pending question.
+  // arrives as a fresh assistant turn in that exchange's answer stack.
   async resumeTurn() {
     const content = this.pendingContentValue
     // The page knows its own address: claiming it up front keeps the
@@ -513,9 +590,10 @@ export default class extends Controller {
     // response — a manual resend after that must still ride the retry
     // path, or the server would double-persist the user turn.
     this.conversationUrl ||= window.location.pathname
-    this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
-    const turns = this.transcriptTarget.querySelectorAll("article")
-    const answer = turns[turns.length - 1]
+    const wrap = this.answerWrap()
+    wrap.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
+    const articles = wrap.querySelectorAll("article")
+    const answer = articles[articles.length - 1]
     this.contentEl = answer.querySelector("div")
 
     await this.stream(content, null, answer, { retry: true, mode: null, images: [] })
@@ -529,24 +607,50 @@ export default class extends Controller {
     // You just sent: the reply deserves an audience. Re-pin the reader.
     this.autoScroll = true
     this.element.querySelector(".jump-latest")?.classList.add("hidden")
-    this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("user", content, images))
-    this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
-    // The reserved title row becomes the conversation's working title —
-    // the sent question, truncated exactly like Conversation.start! (an
+    // One exchange shell: question cell, answer stack — the note card
+    // arrives at completion. The new turn's node is red; every older one
+    // demotes to gold. The server render marks only the last user turn
+    // live, so the reload twin agrees.
+    this.transcriptTarget.querySelectorAll(".c-node-live").forEach((node) => node.classList.remove("c-node-live"))
+    const cols = this.ensureHeads()
+    const shell = document.createElement("div")
+    shell.className = "c-turn"
+    shell.innerHTML =
+      `<div class="c-q"><span class="c-node c-node-live"></span>${this.turnHtml("user", content, images)}</div>` +
+      `<div class="c-a-wrap">${this.turnHtml("assistant", "")}</div>`
+    cols.append(shell)
+    // The reserved title row's heir: the masthead's edition band reads
+    // the working title — truncated exactly like Conversation.start! (an
     // image-only send names itself the same way the server's fallback
-    // does) — so the row reads the same before and after the Turbo.visit
-    // swap.
-    if (this.hasTitleTarget) {
-      this.titleTarget.classList.remove("invisible")
-      this.titleTarget.querySelector("span").textContent =
-        content.replace(/\s+/g, " ").slice(0, 50) || (images.length === 1 ? "Image" : `${images.length} images`)
+    // does) — so the band reads the same before and after the
+    // Turbo.visit swap. Fresh pages only: a show page's band already
+    // carries the conversation's title.
+    if (this.freshValue) {
+      const band = document.getElementById("edition-band")
+      if (band) {
+        band.textContent =
+          content.replace(/\s+/g, " ").slice(0, 50) || (images.length === 1 ? "Image" : `${images.length} images`)
+      }
     }
-    const turns = this.transcriptTarget.querySelectorAll("article")
-    const answer = turns[turns.length - 1]
+    const answer = shell.querySelector(".c-a-wrap article")
     // Streamed text renders in final color from the start — no
     // provisional faint pass.
     this.contentEl = answer.querySelector("div")
     return answer
+  }
+
+  // The column heads above the transcript — created lazily on the first
+  // send of a fresh chat, matching the server render's heads row.
+  ensureHeads() {
+    let cols = this.transcriptTarget.querySelector(".c-cols")
+    if (!cols) {
+      cols = document.createElement("div")
+      cols.className = "c-cols"
+      // Byte-identical with _chat.html.erb's head row.
+      cols.innerHTML = '<div class="c-col-head c-head-q">Current</div><div class="c-col-head c-head-sources">Sources</div>'
+      this.transcriptTarget.append(cols)
+    }
+    return cols
   }
 
   // The foreman's status: a pulsing dot, the newest phase, and a running
@@ -565,7 +669,8 @@ export default class extends Controller {
     // line survives); the new turn's log starts fresh below its own line.
     this.logEl = null
     this.statusEl = document.createElement("p")
-    this.statusEl.className = "turn-status flex cursor-pointer items-center gap-2 text-xs text-neutral-500"
+    this.statusEl = document.createElement("p")
+    this.statusEl.className = "turn-status flex cursor-pointer items-center gap-2 font-mono text-xs text-kiosk"
     // The event is named explicitly: Stimulus's shorthand (identifier#method)
     // resolves the event from the element's default (a → click, form →
     // submit, …) and a <p> has none — the action throws "missing event
@@ -662,15 +767,20 @@ export default class extends Controller {
   }
 
   turnHtml(role, content, images = []) {
-    const label = role === "user" ? "You" : "Comrade"
     // Attachments render above the turn's text, same slot the tool chips
     // and image strips take in answers. Byte-identical with
-    // _message.html.erb's user branch (styling in c-attachment-strip).
+    // _message.html.erb's branches (styling in the c- classes).
     const strip = images.length ? this.attachmentStripHtml(images) : ""
-    return `<article class="${role === "user" ? "text-neutral-100" : "text-neutral-300"}">
-      <p class="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">${label}</p>
+    if (role === "user") {
+      return `<article>
+      <p class="c-turn-label"><span class="c-who-mark">▸</span>You</p>
       ${strip}
-      <div class="whitespace-pre-wrap leading-relaxed">${content}</div>
+      <div class="c-question">${content}</div>
+    </article>`
+    }
+    return `<article>
+      <p class="c-turn-label"><span class="c-who-mark">▸</span>Comrade</p>
+      <div class="c-answer whitespace-pre-wrap">${content}</div>
     </article>`
   }
 
@@ -769,17 +879,17 @@ export default class extends Controller {
       this.renderTurnStatus()
       // Chips collect into one group div (matching the server render):
       // the group carries the outer spacing, chips are tight inside it.
-      let group = answer.querySelector(".chip-group")
+      let group = answer.querySelector(".c-chip-group")
       if (!group) {
         group = document.createElement("div")
-        group.className = "chip-group mt-2 mb-3"
+        group.className = "c-chip-group"
         this.contentEl.after(group)
       }
       const chip = document.createElement("template")
       chip.innerHTML = this.toolChip(event).trim()
       group.append(chip.content.firstChild)
       this.contentEl = document.createElement("div")
-      this.contentEl.className = "whitespace-pre-wrap leading-relaxed"
+      this.contentEl.className = "c-answer whitespace-pre-wrap"
       group.after(this.contentEl)
     } else if (event.type === "images") {
       // An image_search round's found pictures: a thumbnail strip after
@@ -829,9 +939,9 @@ export default class extends Controller {
   // End-of-stream formatting: paragraphs split on blank lines, each
   // rendered as markdown (the model writes markdown); inline [n] markers
   // plus the model's "Sources:" footer are consumed as the
-  // paragraph→source signal and stripped — each paragraph renders with
-  // quiet source chips under it, superscripts never appear. During the
-  // stream the markers show as literal text (they can split across
+  // paragraph→source signal and stripped — their sources print in the
+  // turn's margin note card, superscripts never appear (slice 2). During
+  // the stream the markers show as literal text (they can split across
   // deltas), so the transformation waits for the whole answer. Text is
   // escaped before parsing so the model's output can never carry live
   // HTML through marked.
@@ -843,7 +953,8 @@ export default class extends Controller {
     // Finalized: the raw-text pre-wrap goes — the markdown renderer's
     // block tags carry spacing from here.
     content.classList.remove("whitespace-pre-wrap")
-    const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    const escape = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
 
     const markerSources = {}
     const body = this.partial.replace(/\n?Sources?:\n((?:\s*\[\d+\][^\n]*\n?)+)\s*$/, (block, lines) => {
@@ -871,42 +982,33 @@ export default class extends Controller {
       citations.forEach((citation, index) => { markerSources[index + 1] = citation })
     }
 
-    // Deep-lane drift fallback (twin of footer_fallback in
-    // sources_helper.rb): the model declared a footer but resolved
-    // no inline markers — the footer's own declared list becomes a
-    // trailing chip line, resolved and deduped exactly like the
-    // per-paragraph chips. Tied to a declared footer: a footerless
-    // answer never auto-renders its canonical citations.
-    const footerSources = Object.keys(markerSources)
-      .sort((a, b) => a - b)
-      .map((n) => {
-        const cited = markerSources[n]
-        const citation = citations.find((c) => c.url === cited.url)
-        return citation || { url: cited.url, title: cited.title || new URL(cited.url).host }
-      })
-      .filter((source, index, all) => all.findIndex((s) => s.url === source.url) === index)
-
+    // The note card's lines: the union of the paragraphs' marker
+    // resolutions, first-appearance order, deduped by url — each
+    // carrying the marker number that cited it. A declared footer with
+    // no inline markers (deep-lane drift) falls back to the footer's own
+    // list. Twin of turn_sources in sources_helper.rb.
+    const noteSources = []
+    const remember = (n, cited) => {
+      const citation = citations.find((c) => c.url === cited.url)
+      const source = citation || { url: cited.url, title: cited.title || new URL(cited.url).host }
+      if (!noteSources.some((s) => s.url === source.url)) noteSources.push({ n, url: source.url, title: source.title })
+    }
     let resolved = false
     const html = body.split(/\n\n+/).map((paragraph) => {
-      const urls = []
       const plain = this.sansSup(this.sansRangeMarkers(paragraph)).replace(/\s*\[(\d+)\]/g, (marker, n) => {
         const cited = markerSources[parseInt(n)]
         if (!cited) return marker
         resolved = true
-        const citation = citations.find((c) => c.url === cited.url)
-        const source = citation || { url: cited.url, title: cited.title || new URL(cited.url).host }
-        // One chip per url per paragraph — positional resolution makes
-        // two markers resolve to one source routinely (a url re-found in
-        // a later search). Twin of paragraph_sources' terminal uniq.
-        if (!urls.some((u) => u.url === source.url)) urls.push(source)
+        remember(parseInt(n), cited)
         return ""
       })
-      const chips = this.sourceChips(urls, escape)
-      const block = marked.parse(escape(plain), { breaks: true })
-      return `<div class="mb-3 last:mb-0">${block}</div>${chips}`
+      return marked.parse(escape(plain), { breaks: true })
     }).join("")
-    if (footerDeclared && footerSources.length && !resolved) html += this.sourceChips(footerSources, escape)
+    if (footerDeclared && !resolved) {
+      Object.keys(markerSources).sort((a, b) => a - b).forEach((n) => remember(parseInt(n), markerSources[n]))
+    }
     content.innerHTML = html
+    this.fillNote(answer, noteSources, escape)
     // Completion merges the foreman into the action line: the status
     // line and its live log retire, the merged line carries the dot and
     // the clickable total, and the persisted log sits under it — what a
@@ -925,6 +1027,27 @@ export default class extends Controller {
     this.pendingStats = null
   }
 
+  // The margin-note card: the exchange's note number, then one line per
+  // source — marker, title link, go-deeper — or the "none" line when the
+  // answer drew on model knowledge alone. The number counts the notes
+  // already in the transcript, matching the server render's exchange
+  // count. Byte-shape twin of note_card in sources_helper.rb.
+  fillNote(answer, sources, escape) {
+    const shell = answer.closest(".c-turn")
+    if (!shell) return
+    const number = String(this.transcriptTarget.querySelectorAll(".c-note").length).padStart(2, "0")
+    let note = shell.querySelector(".c-note")
+    if (!note) {
+      note = document.createElement("div")
+      note.className = "c-note"
+      shell.append(note)
+    }
+    const lines = sources.map((source) =>
+      `<span class="c-note-line"><em>${source.n}</em> · <a href="${escape(source.url)}" target="_blank" rel="noopener">${escape(source.title || source.url)}</a> <a href="#" data-title="${escape(source.title || "")}" data-url="${escape(source.url)}" data-action="stream-reader#goDeeper" class="go-deeper">go deeper</a></span>`)
+    if (!lines.length) lines.push('<span class="c-note-line">none — from model knowledge</span>')
+    note.innerHTML = `<b class="c-note-num">${number}</b>${lines.join("")}`
+  }
+
   // The model sometimes copies the interface's superscript markup into
   // its own text; it renders as escaped noise, so it goes.
   sansSup(text) {
@@ -938,16 +1061,6 @@ export default class extends Controller {
     return text.replace(/\s*\[\d+\]\s*[–—-]\s*(?:\[\d+\]|\d+)|\s*\[\d+\s*[–—-]\s*\d+\]/g, "")
   }
 
-  sourceChips(sources, escape) {
-    if (!sources.length) return ""
-    const links = sources.map((s) => {
-      const title = `<a href="${escape(s.url)}" target="_blank" rel="noopener" class="underline hover:text-neutral-300">${escape(s.title || s.url)}</a>`
-      const deeper = `<a href="#" data-title="${escape(s.title || "")}" data-url="${escape(s.url)}" data-action="stream-reader#goDeeper" class="go-deeper cursor-pointer underline hover:text-neutral-300">go deeper</a>`
-      return `${title} · ${deeper}`
-    })
-    return `<div class="mt-1 mb-4 text-xs text-neutral-500">sources: ${links.join(" · ")}</div>`
-  }
-
   // The foreman's log line for a tool event — the same words the server
   // writes into the persisted log (tool_log_line in reply.rb).
   toolLogLine(event) {
@@ -958,14 +1071,17 @@ export default class extends Controller {
   }
 
   toolChip(event) {
+    const escape = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
     const label =
-      event.name === "image_search" ? `searched images for ${event.query}`
-      : event.name === "read_image" ? `read image ${event.key}`
-      : event.query ? `searched for ${event.query}`
-      : `fetched ${event.url}`
+      event.name === "image_search" ? "searched images for:"
+      : event.name === "read_image" ? "read image:"
+      : event.query ? "searched for:"
+      : "fetched:"
+    const value = event.query || event.url || event.key
     // Chip inside the group (see applyEvent): tight, the group div carries
-    // the spacing.
-    return `<p class="mb-1 text-xs text-neutral-500">— ${label}</p>`
+    // the spacing. Byte-shape twin of tool_note in conversations_helper.rb.
+    return `<p class="c-tool-chip">— ${label} <em>${escape(value)}</em></p>`
   }
 
   // The thumbnail strip an image_search round found: proxied thumbs
@@ -974,7 +1090,7 @@ export default class extends Controller {
   // ahead of the answer text; further strips keep row order under it.
   // Byte-identical with image_strip in conversations_helper.rb.
   renderImageStrip(answer, images) {
-    const group = answer.querySelector(".chip-group")
+    const group = answer.querySelector(".c-chip-group")
     if (!group || !images?.length) return
     const strips = answer.querySelectorAll(".image-strip")
     const anchor = strips.length ? strips[strips.length - 1] : group
@@ -1002,7 +1118,7 @@ export default class extends Controller {
   statsSegment() {
     const stats = this.pendingStats
     if (!stats || !stats.total_ms) return ""
-    return ` · <span class="cursor-pointer hover:text-neutral-300" data-action="click->stream-reader#toggleTurnLog">total ${this.statSeconds(stats.total_ms)}</span>`
+    return ` · <span class="cursor-pointer hover:text-newsprint" data-action="click->stream-reader#toggleTurnLog">total ${this.statSeconds(stats.total_ms)}</span>`
   }
 
   statSeconds(ms) {
@@ -1030,18 +1146,18 @@ export default class extends Controller {
   }
 
   get ownKnowledgeHtml() {
-    // Must stay byte-identical with _message.html.erb's double_check footer:
+    // Must stay byte-identical with _message.html.erb's memory footer:
     // the post-first-reply Turbo.visit swaps one for the other.
-    let html = '<div class="mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.standingDot + 'From model knowledge' + this.statsSegment() + '<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check cursor-pointer underline hover:text-neutral-300">Check sources</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a></span>'
+    let html = '<div class="c-stats-line">' + this.standingDot + 'from model knowledge' + this.statsSegment() + '<span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down">break it down</a></span>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }
 
-  // The action line on a search answer — chips carry the sources, the
-  // line names them (From sources) and carries the action. Byte-identical
-  // with _message.html.erb's break_down branch.
+  // The action line on a search answer — the note card carries the
+  // sources, the line names them (from sources) and carries the actions.
+  // Byte-identical with _message.html.erb's sources branch.
   get breakDownHtml() {
-    let html = '<div class="break-down-offer mt-3 border-t border-ground-bright pt-2 text-xs text-neutral-500">' + this.standingDot + 'From sources' + this.statsSegment() + ' · <a href="#" data-action="stream-reader#breakDown" class="break-down cursor-pointer underline hover:text-neutral-300">Break it down</a>'
+    let html = '<div class="c-stats-line">' + this.standingDot + 'from sources' + this.statsSegment() + '<span class="double-check-offer"> · <a href="#" data-action="stream-reader#doubleCheck" class="double-check">check sources</a></span><span class="break-down-offer"> · <a href="#" data-action="stream-reader#breakDown" class="break-down">break it down</a></span>'
     if (this.keepSimpleValue) html += this.keepSimpleHtml
     return html + '</div>'
   }
@@ -1051,21 +1167,21 @@ export default class extends Controller {
   // method delegation, so injected anchors behave like server-rendered
   // ones. Byte-identical with _message.html.erb's keep-simple span.
   get keepSimpleHtml() {
-    return '<span class="keep-simple-offer"> · Simpler by default? <a href="/calibration" data-turbo-method="post" class="cursor-pointer underline hover:text-neutral-300">Yes</a> <a href="/calibration" data-turbo-method="delete" class="cursor-pointer text-neutral-500 hover:text-neutral-300">No thanks</a></span>'
+    return '<span class="keep-simple-offer"> · Simpler by default? <a href="/calibration" data-turbo-method="post">Yes</a> <a href="/calibration" data-turbo-method="delete">No thanks</a></span>'
   }
 
   // "Stay in the commune": the gate's punt is a client-side reveal — the
-  // composer and the sidebar were always here, just held back until the
+  // composer and the rail were always here, just held back until the
   // reader chose. No cookie, no memory: a fresh load asks again. A
   // handle is the only permanent way out of the gate.
   stayInCommune(event) {
     event.preventDefault()
     this.gateTarget.hidden = true
     this.greetingTarget.hidden = false
-    this.formTarget.classList.remove("hidden")
+    this.composerTarget.classList.remove("hidden")
     this.fitPlaceholder()
     document.querySelectorAll("[data-gate-sidebar]").forEach((el) => el.classList.remove("hidden"))
-    // The ☰ carries the same gated-hidden as its sidebar and rides along.
+    // The ☰ carries the same gated-hidden as its rail and rides along.
     document.querySelector("[data-sidebar-drawer-target='toggle']")?.classList.remove("hidden")
     this.formTarget.elements.content.focus()
   }

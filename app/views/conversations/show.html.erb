@@ -1,10 +1,12 @@
-<div class="mx-auto flex h-16 max-w-3xl shrink-0 items-center gap-3 px-5 pt-10 text-sm text-neutral-500">
-  <span class="grow truncate"><%= @conversation.title.presence || '(Untitled)' %></span>
+<%# The show page: the masthead's edition band carries the conversation's
+    working title; the sub-band carries the archive affordance. %>
+<% content_for :edition, @conversation.title.presence || '(Untitled)' %>
+<% content_for :editions do %>
   <% if @conversation.archived? %>
-    <%= button_to 'Unarchive', unarchive_conversation_path(@conversation), method: :patch, class: 'cursor-pointer rounded bg-soviet/20 px-2 py-0.5 text-xs text-neutral-500 hover:text-neutral-200 hover:bg-soviet/50' %>
+    <%= button_to 'unarchive', unarchive_conversation_path(@conversation), method: :patch, class: 'c-ed-link cursor-pointer' %>
   <% else %>
-    <%= button_to 'Archive', archive_conversation_path(@conversation), method: :patch, class: 'cursor-pointer rounded bg-soviet/20 px-2 py-0.5 text-xs text-neutral-500 hover:text-neutral-200 hover:bg-soviet/50' %>
+    <%= button_to 'archive', archive_conversation_path(@conversation), method: :patch, class: 'c-ed-link cursor-pointer' %>
   <% end %>
-</div>
+<% end %>
 
 <%= chat_surface(endpoint: conversation_messages_path(@conversation), fresh: false, conversation: @conversation, messages: @conversation.messages) %>
