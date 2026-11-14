@@ -55,13 +55,6 @@ export default class extends Controller {
   // reverts to all on send, like the composer clearing; a retry replays
   // the failed turn's mode.
   imageMode = false
-  // One-shot handoff from the fresh chat's first send (see connect's
-  // marker branch): consume-and-clear, 30s shelf life.
-  takeComposerFocusMarker() {
-    const stamp = Number(sessionStorage.getItem("comrade:focus-composer"))
-    sessionStorage.removeItem("comrade:focus-composer")
-    return stamp && Date.now() - stamp < 30000
-  }
   // Staged attachments: what the next send carries. Each entry is
   // {data, full, width, height, fullWidth, fullHeight, sourceUrl} —
   // data URLs and dimensions, `full` present only when staging shrank
@@ -100,11 +93,12 @@ export default class extends Controller {
     this.element.addEventListener("dragover", this.onDragOver)
     this.element.addEventListener("dragleave", this.onDragLeave)
     this.element.addEventListener("drop", this.onDrop)
-    // A new conversation starts with the composer focused — land and type.
-    // Only the landing grabs focus; opening an old conversation to read it
-    // shouldn't steal focus (or pop the keyboard accessory bar). The gate
-    // holds the composer hidden, so nothing to focus until it's revealed.
-    if (this.freshValue && !this.composerTarget.classList.contains("hidden")) {
+    // Every arrival with a visible composer claims focus — land and type,
+    // whichever door brought you here. The gate holds the composer
+    // hidden, so nothing to focus until it's revealed. The keyboard
+    // popping on a mobile open is rsl's accepted cost: every open is
+    // ready-to-type, reading starts by dismissing it (2026-11-14).
+    if (!this.composerTarget.classList.contains("hidden")) {
       const field = this.formTarget.elements.content
       // Firefox for iOS fails to activate load-time autofocus: the
       // element takes DOM focus (activeElement confirmed, focus events
@@ -125,13 +119,6 @@ export default class extends Controller {
       // already focused something else (2026-11-14, iPad report).
       requestAnimationFrame(() => { if (document.activeElement === field) { field.blur(); field.focus() } })
       setTimeout(() => { if (document.activeElement === field) { field.blur(); field.focus() } }, 200)
-    } else if (this.takeComposerFocusMarker()) {
-      // Arrived from a fresh chat's first send (the visit stamped a marker
-      // before Turbo.visit). The swap replaced the focused composer's DOM,
-      // so the focus the send held is gone — hand it back for the
-      // follow-up. Ordinary opens of old conversations carry no marker
-      // and never get grabbed, and stale markers die in 30s.
-      this.formTarget.elements.content.focus()
     }
     // Tab with nothing focused: WebKit can hold DOM focus invisibly (the
     // iPad bug this branch hunts), leaving the reader stranded with
@@ -504,11 +491,10 @@ export default class extends Controller {
     // when steered, the exchange that carries the interruption) ends with
     // a Turbo visit to the conversation's permanent address. On a show
     // page exchanges append in place. An upstream error ends the stream
-    // without completion, so it never visits. The marker tells the show
-    // page's connect() to hand focus back — this swap replaces the
-    // composer's DOM, so the focus this send held dies here otherwise.
+    // without completion, so it never visits. The show page's connect()
+    // claims focus — this swap replaced the composer's DOM, so the focus
+    // this send held dies here otherwise.
     if (completed && this.freshValue) {
-      sessionStorage.setItem("comrade:focus-composer", String(Date.now()))
       Turbo.visit(this.conversationUrl)
     }
   }
