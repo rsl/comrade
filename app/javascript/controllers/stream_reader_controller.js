@@ -13,7 +13,7 @@ import { marked } from "marked"
 // completed stream visits the conversation's permanent address.
 export default class extends Controller {
   static targets = ["form", "transcript", "title", "gate", "greeting", "webMode", "imageMode", "fileInput", "staged", "dropOverlay"]
-  static values = { endpoint: String, fresh: Boolean, keepSimple: Boolean }
+  static values = { endpoint: String, fresh: Boolean, keepSimple: Boolean, pending: Boolean, pendingContent: String }
 
   // The in-flight request, abortable, and the partial answer text it has
   // shown so far — the steer payload when a new message interrupts it.
@@ -101,6 +101,10 @@ export default class extends Controller {
     this.fitPlaceholder()
     this.element.insertAdjacentHTML("beforeend",
       '<button type="button" data-action="stream-reader#jumpToLatest" class="jump-latest fixed bottom-28 right-64 z-20 hidden cursor-pointer rounded-full bg-soviet/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-soviet/60">↓ latest</button>')
+    // The server marked this conversation's last user turn unanswered —
+    // a search-handoff GET that booted the turn, or a reload mid-stream.
+    // Resume it now; the server's retry case makes the resume idempotent.
+    if (this.hasPendingValue && this.pendingValue) this.resumeTurn()
   }
 
   // The full greeting doesn't fit one line beside the mode switch at
@@ -495,6 +499,26 @@ export default class extends Controller {
     this.contentEl = answer.querySelector("div")
 
     await this.stream(content, interrupted, answer, { retry: this.conversationUrl != null, mode, images })
+  }
+
+  // The pending-turn resume: the user turn is server-rendered and
+  // persisted (a dead stream's, or one booted by the /search GET), so the
+  // resume always rides the retry path — the server matches the turn to
+  // its row on the exact content and never double-persists. The answer
+  // arrives as a fresh assistant turn below the pending question.
+  async resumeTurn() {
+    const content = this.pendingContentValue
+    // The page knows its own address: claiming it up front keeps the
+    // retry flag true even when the resume's fetch dies before a
+    // response — a manual resend after that must still ride the retry
+    // path, or the server would double-persist the user turn.
+    this.conversationUrl ||= window.location.pathname
+    this.transcriptTarget.insertAdjacentHTML("beforeend", this.turnHtml("assistant", ""))
+    const turns = this.transcriptTarget.querySelectorAll("article")
+    const answer = turns[turns.length - 1]
+    this.contentEl = answer.querySelector("div")
+
+    await this.stream(content, null, answer, { retry: true, mode: null, images: [] })
   }
 
   appendExchange(content, images = []) {

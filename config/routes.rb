@@ -40,6 +40,16 @@ Rails.application.routes.draw do
   # into params[:format] and the filename grammar would fail.
   get 'uploads/:filename' => 'uploads#show', as: :upload, constraints: { filename: /[0-9a-f]{24}\.[a-z]+/ }
 
+  # The search-engine door: OpenSearch clients (Firefox's address bar)
+  # hand the query over as a plain GET — POST can't ride a search engine.
+  # #show boots the turn as a pending one; the conversation page's
+  # stream reader resumes it. #opensearch is the description document
+  # that lets a browser offer "Add Comrade" (link rel="search" in the
+  # layout); the request host fills the template, so each fleet name
+  # registers itself.
+  get 'search', to: 'searches#show', as: :search
+  get 'opensearch.xml', to: 'searches#opensearch', as: :opensearch
+
   # Identity: one door, singular resource. create enlists or claims (the
   # gate's "stay in the commune" is client-side — no route, no memory),
   # update saves the party line, destroy steps out to the commune.

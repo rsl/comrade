@@ -1,4 +1,9 @@
-<%= tag.div 'data-controller': 'stream-reader', 'data-stream-reader-endpoint-value': endpoint, 'data-stream-reader-fresh-value': fresh, 'data-stream-reader-keep-simple-value': current_enlistee&.offer_keep_simple? ? true : false, class: 'flex min-h-0 flex-1 flex-col' do %>
+<%# A pending turn rides as data: the stream reader auto-resumes it on
+    connect (the answer to a search-handoff GET, or a reload mid-stream).
+    The content rides along — the resume is a retry, and the server
+    matches the retry to its row on this exact text. %>
+<% pending = pending_user_row(messages) %>
+<%= tag.div 'data-controller': 'stream-reader', 'data-stream-reader-endpoint-value': endpoint, 'data-stream-reader-fresh-value': fresh, 'data-stream-reader-keep-simple-value': current_enlistee&.offer_keep_simple? ? true : false, 'data-stream-reader-pending-value': pending.present?, 'data-stream-reader-pending-content-value': pending&.content.to_s, class: 'flex min-h-0 flex-1 flex-col' do %>
   <%# Gated: a tokenless browser on an empty chat — the enlist card owns
       the ask, the composer waits hidden, and the layout compensates for
       the reserved title row so the card centers on the window. %>

@@ -14,6 +14,10 @@
     <link rel="icon" href="/icon.png" type="image/png">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon.png">
+    <%# The OpenSearch handoff: visiting the app lets Firefox offer
+        "Add Comrade" from the address bar's magnifier, putting the
+        whole ask behind one GET to /search. %>
+    <%= tag.link rel: 'search', type: 'application/opensearchdescription+xml', title: 'Comrade', href: opensearch_path %>
 
     <%# Restores the saved root font size before first paint (see font_scale_boot.js and the font-sizer controller). %>
     <%= javascript_include_tag 'font_scale_boot' %>

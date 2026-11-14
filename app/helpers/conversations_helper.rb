@@ -62,6 +62,30 @@ module ConversationsHelper
     tag.pre(message.stats['log'].join("\n"), class: 'c-turn-log hidden')
   end
 
+  # The pending turn: the transcript's last user row with no assistant
+  # answer after it — a stream that died mid-answer, or a search-handoff
+  # GET that booted the turn and left the answer to the reader's arrival.
+  # Ruby twin of the reply retry's three-way case: the marker the stream
+  # reader acts on must agree with what the server will decide on resume,
+  # or the auto-resumed turn would double-persist the answer. Nil when
+  # nothing is pending.
+  def pending_user_row(messages)
+    last_user = messages.reverse.detect { |message| message.role == 'user' }
+    return if last_user.nil?
+
+    # The answer test is the retry machinery's own: an assistant row after
+    # the question, its content present — nil (a tool_calls frame) doesn't
+    # answer anything.
+    answered = messages.any? do |message|
+      message.role == 'assistant' &&
+        message.id > last_user.id &&
+        !message.content.nil?
+    end
+    return if answered
+
+    last_user
+  end
+
   # The archive row's label: the conversation's whole first line — the
   # prompt as asked, not the 50-char title. First non-blank line of the
   # first user turn; the title stands in when the row has none.
