@@ -135,11 +135,13 @@ export default class extends Controller {
     }
     // Tab with nothing focused: WebKit can hold DOM focus invisibly (the
     // iPad bug this branch hunts), leaving the reader stranded with
-    // nowhere for Tab to go. A Tab seen with body/null owning focus
-    // claims the composer instead; when a link or button owns focus,
-    // normal traversal proceeds untouched.
+    // nowhere for Tab to go. A forward Tab seen with body/null owning
+    // focus claims the composer instead; when a link or button owns
+    // focus, normal traversal proceeds untouched. Shift-Tab always
+    // passes through — a stranded reader keeps a native way into the
+    // rest of the page (rail, masthead), never a two-way trap.
     this.onKeydown = (event) => {
-      if (event.key !== "Tab") return
+      if (event.shiftKey || event.key !== "Tab") return
       const active = document.activeElement
       const stranded = active === document.body || active === null || active === document.documentElement
       if (stranded && !this.composerTarget.classList.contains("hidden")) {
